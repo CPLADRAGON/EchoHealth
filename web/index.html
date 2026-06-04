@@ -97,6 +97,25 @@
     margin:8px 2px 10px;padding-top:10px;border-top:1px solid var(--hairline);
     font-size:13px;line-height:1.6;color:var(--ink);
   }
+
+  /* ---- routes map ---- */
+  .mapsec{margin-top:24px}
+  .mapsec.card{padding:18px}
+  .map-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
+  .map-head .map-titles h3{margin:0 0 2px;font-size:17px;font-weight:600;letter-spacing:-.2px}
+  .map-head .map-titles p{margin:0;font-size:13px;color:var(--muted)}
+  #routePick{
+    font-family:inherit;font-size:13px;color:var(--ink);background:var(--bg);
+    border:1px solid var(--hairline);border-radius:9999px;padding:8px 14px;cursor:pointer;max-width:260px;
+  }
+  #routeMap{width:100%;height:420px;border-radius:14px;overflow:hidden;background:#eef1f4}
+  .map-foot{margin:10px 2px 0;font-size:12px;line-height:1.6;color:var(--muted)}
+  .map-hint{
+    display:flex;align-items:center;justify-content:center;min-height:140px;text-align:center;
+    font-size:14px;line-height:1.6;color:var(--muted);padding:8px;
+  }
+  .leaflet-container{font-family:inherit}
+
   .reset{
     background:none;border:1px solid var(--hairline);border-radius:9999px;color:var(--ink);
     font-family:inherit;font-size:13px;padding:8px 18px;cursor:pointer;margin:26px 0 0;
@@ -251,6 +270,20 @@
       <div class="grid" id="chartGrid"></div>
     </section>
 
+    <!-- routes map -->
+    <section class="mapsec card" id="mapSec" style="display:none">
+      <div class="map-head">
+        <div class="map-titles">
+          <h3 data-i="map.title"></h3>
+          <p data-i="map.sub"></p>
+        </div>
+        <select id="routePick" aria-label="route"></select>
+      </div>
+      <div id="routeMap"></div>
+      <div class="map-hint" id="mapHint" style="display:none"></div>
+      <p class="map-foot" data-i="map.privacy"></p>
+    </section>
+
     <!-- AI assistant -->
     <section class="ai" id="aiPanel">
       <div class="ai-head">
@@ -322,6 +355,13 @@ const I18N = {
     "axis.ms": "HRV (ms)",
     "axis.hours": "Hours",
     "axis.count": "Workouts",
+    "map.title": "Where you move",
+    "map.sub": "Every recorded workout route, mapped together.",
+    "map.all": "All routes ({n})",
+    "map.routeLabel": "Route",
+    "map.noRoutes": "No route maps were found. Route data lives only inside <b>export.zip</b> (under <b>workout-routes</b>), not in <b>export.xml</b>. Re-run the export and upload the <b>.zip</b> to see your run maps here.",
+    "map.loadError": "The map library couldn't load. Check your connection and try again.",
+    "map.privacy": "Routes can reveal your home and frequent locations — everything is drawn on your device and never uploaded. Map tiles are loaded from OpenStreetMap.",
     "footer.text": "EchoHealth · Runs locally in your browser · No account, no servers, no tracking.",
     "onb.badge": "100% on-device · nothing uploaded",
     "onb.title": "Welcome",
@@ -397,6 +437,13 @@ const I18N = {
     "axis.ms": "HRV（毫秒）",
     "axis.hours": "小时",
     "axis.count": "训练次数",
+    "map.title": "你的足迹",
+    "map.sub": "把每一条记录到的运动路线汇聚在一张地图上。",
+    "map.all": "全部路线（{n}）",
+    "map.routeLabel": "路线",
+    "map.noRoutes": "未找到路线地图。路线数据只保存在 <b>export.zip</b> 中（位于 <b>workout-routes</b> 文件夹），<b>export.xml</b> 里没有。请重新导出并上传 <b>.zip</b> 文件，即可在此查看你的路线地图。",
+    "map.loadError": "地图组件加载失败。请检查网络后重试。",
+    "map.privacy": "路线可能会暴露你的住址和常去地点——所有内容都在你的设备上绘制，绝不上传。地图瓦片来自 OpenStreetMap。",
     "footer.text": "回声健康 · 在你的浏览器本地运行 · 无账号、无服务器、无追踪。",
     "onb.badge": "100% 本地处理 · 不上传任何数据",
     "onb.title": "欢迎使用",
@@ -477,7 +524,7 @@ function applyLang(){
     b.classList.toggle("active", b.getAttribute("data-lang") === LANG);
   });
   // re-render results if we already have data
-  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderCharts(LAST_RESULT); }
+  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderCharts(LAST_RESULT); refreshRouteText(); }
   renderAiStatic();
 }
 
@@ -636,6 +683,53 @@ function finalize(A){
   };
 }
 
+// ---- GPS route helpers (workout-routes/*.gpx inside export.zip) ----
+const MAX_ROUTE_PTS = 300; // decimation target — invisible at map zoom, tiny in memory
+const TRKPT_RE = /<trkpt\b[^>]*>/g;
+const LAT_RE = /\blat="([-\d.]+)"/;
+const LON_RE = /\blon="([-\d.]+)"/;
+
+// Pull [lat, lon] pairs from GPX text (Apple writes lon before lat).
+function extractRoutePoints(text){
+  const pts = []; let m; TRKPT_RE.lastIndex = 0;
+  while ((m = TRKPT_RE.exec(text)) !== null){
+    const la = LAT_RE.exec(m[0]), lo = LON_RE.exec(m[0]);
+    if (la && lo){
+      const lat = +la[1], lon = +lo[1];
+      if (!isNaN(lat) && !isNaN(lon)) pts.push([lat, lon]);
+    }
+  }
+  return pts;
+}
+// Keep at most `max` points, always preserving the first and last.
+function decimate(pts, max){
+  if (pts.length <= max) return pts;
+  const step = Math.ceil(pts.length / max);
+  const out = [];
+  for (let i = 0; i < pts.length; i += step) out.push(pts[i]);
+  const last = pts[pts.length - 1];
+  if (out[out.length - 1] !== last) out.push(last);
+  return out;
+}
+// "workout-routes/route_2022-10-13_11.49pm.gpx" -> "2022-10-13 11:49pm"
+function routeLabel(fname){
+  const base = fname.split("/").pop().replace(/\.gpx$/i, "");
+  const m = base.match(/(\d{4}-\d{2}-\d{2})[_ ](\d{1,2}\.\d{2}\s*[ap]m)/i);
+  return m ? (m[1] + " " + m[2].toLowerCase().replace(/\s+/g, "")) : base.replace(/^route[_ ]?/i, "");
+}
+// Sortable key (chronological) derived from the filename.
+function routeSortKey(fname){
+  const base = fname.split("/").pop();
+  const m = base.match(/(\d{4}-\d{2}-\d{2})_(\d{1,2})\.(\d{2})\s*(am|pm)/i);
+  if (m){
+    let h = +m[2]; const ap = m[4].toLowerCase();
+    if (ap === "pm" && h !== 12) h += 12;
+    if (ap === "am" && h === 12) h = 0;
+    return m[1] + " " + String(h).padStart(2, "0") + ":" + m[3];
+  }
+  return base;
+}
+
 // Stream a File (raw export.xml or export.zip) and aggregate it.
 // onProgress(fraction 0..1) is called as bytes are read.
 async function parseHealthExport(file, onProgress){
@@ -671,6 +765,7 @@ async function parseHealthExport(file, onProgress){
     const unzip = new fflate.Unzip();
     unzip.register(fflate.UnzipInflate);
     let picked = false, finished = false, perr = null;
+    const routes = [];
     unzip.onfile = (entry) => {
       const lower = entry.name.toLowerCase();
       // Pick the first .xml that is not the CDA file. The main export dwarfs
@@ -682,6 +777,25 @@ async function parseHealthExport(file, onProgress){
           if (err){ perr = err; return; }
           feed(td.decode(chunk, { stream: !final }), final);
           if (final) finished = true;
+        };
+        entry.start();
+        return;
+      }
+      // Collect workout route maps. Each GPX is small; we decode it, extract
+      // lat/lon, decimate to a few hundred points, then discard the raw text.
+      if (lower.endsWith(".gpx")){
+        const dec = new TextDecoder("utf-8");
+        let gbuf = "";
+        entry.ondata = (err, chunk, final) => {
+          if (err){ perr = err; return; }
+          gbuf += dec.decode(chunk, { stream: !final });
+          if (final){
+            const pts = decimate(extractRoutePoints(gbuf), MAX_ROUTE_PTS);
+            gbuf = "";
+            if (pts.length >= 2){
+              routes.push({ name: routeLabel(entry.name), key: routeSortKey(entry.name), pts });
+            }
+          }
         };
         entry.start();
       }
@@ -697,6 +811,10 @@ async function parseHealthExport(file, onProgress){
     if (perr) throw perr;
     if (!picked) throw new Error("NO_XML");
     if (!finished) feed("", true);
+    routes.sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+    const result = finalize(A);
+    result.routes = routes;
+    return result;
   } else {
     while (true){
       const { value, done } = await reader.read();
@@ -706,7 +824,9 @@ async function parseHealthExport(file, onProgress){
       if (onProgress && total) onProgress(read / total);
     }
   }
-  return finalize(A);
+  const result = finalize(A);
+  result.routes = [];
+  return result;
 }
 
 /* =====================================================================
@@ -756,6 +876,7 @@ async function handleFile(file){
     showStage("results");
     renderKPIs(LAST_RESULT);
     renderCharts(LAST_RESULT);
+    renderRoutes(LAST_RESULT);
   }catch(err){
     console.error(err);
     const raw = String(err && err.message || err);
@@ -777,6 +898,7 @@ async function handleFile(file){
 
 document.getElementById("resetBtn").addEventListener("click", ()=>{
   fileInput.value = "";
+  if (_map){ _map.remove(); _map = null; _routeLayers = []; _allBounds = null; }
   showStage("drop");
 });
 
@@ -915,6 +1037,140 @@ function renderCharts(r){
     const wmax = Math.max(...wy), wmonth = r.workouts_month.x[wy.indexOf(wmax)];
     fillInsight("i_wo", tf("ins.wo", {total:fmtInt(r.meta.workouts),
       avgmo:fmtInt(Math.round(_mean(wy))), month:wmonth, max:fmtInt(wmax)}));
+  }
+}
+
+/* =====================================================================
+   routes map (lazy-loaded Leaflet + OpenStreetMap tiles)
+
+   All 172 routes are decimated to a few hundred points each during parsing
+   (~0.6 MB of coordinates total), drawn together on a single canvas-rendered
+   map. A picker highlights and zooms a single run. Leaflet itself (~42 KB) is
+   only fetched the first time a file with routes is shown, so it never weighs
+   on the initial page load.
+   ===================================================================== */
+const LEAFLET_JS  = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js";
+const LEAFLET_CSS = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css";
+let _leafletReady = null;
+function loadLeaflet(){
+  if (window.L) return Promise.resolve();
+  if (_leafletReady) return _leafletReady;
+  _leafletReady = new Promise((resolve, reject)=>{
+    const css = document.createElement("link");
+    css.rel = "stylesheet"; css.href = LEAFLET_CSS;
+    document.head.appendChild(css);
+    const js = document.createElement("script");
+    js.src = LEAFLET_JS;
+    js.onload = ()=>resolve();
+    js.onerror = ()=>reject(new Error("LEAFLET_LOAD"));
+    document.head.appendChild(js);
+  });
+  return _leafletReady;
+}
+
+let _map = null, _routeLayers = [], _allBounds = null;
+const ROUTE_DIM = "rgba(250,60,76,0.35)";   // faint accent for the full overlay
+const ROUTE_HI  = "#fa3c4c";                 // bright accent for the selected run
+
+function renderRoutes(r){
+  const sec = document.getElementById("mapSec");
+  const mapEl = document.getElementById("routeMap");
+  const hint = document.getElementById("mapHint");
+  const pick = document.getElementById("routePick");
+  const routes = (r && r.routes) || [];
+  sec.style.display = "";
+
+  if (!routes.length){
+    // Shown with a hint: route data only exists inside export.zip.
+    mapEl.style.display = "none";
+    pick.style.display = "none";
+    hint.style.display = "";
+    hint.innerHTML = t("map.noRoutes");
+    return;
+  }
+  hint.style.display = "none";
+  mapEl.style.display = "";
+  pick.style.display = "";
+
+  // Build the picker: "All routes (N)" + each run, newest first.
+  const ordered = routes.slice().reverse();
+  pick.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "all";
+  optAll.textContent = tf("map.all", {n: routes.length});
+  pick.appendChild(optAll);
+  ordered.forEach((rt, i)=>{
+    const o = document.createElement("option");
+    o.value = String(i);
+    o.textContent = rt.name;
+    pick.appendChild(o);
+  });
+
+  loadLeaflet().then(()=>{
+    buildMap(mapEl, ordered);
+  }).catch(()=>{
+    mapEl.style.display = "none";
+    pick.style.display = "none";
+    hint.style.display = "";
+    hint.textContent = t("map.loadError");
+  });
+}
+
+function buildMap(mapEl, routes){
+  if (_map){ _map.remove(); _map = null; }
+  _routeLayers = [];
+  _map = L.map(mapEl, { preferCanvas: true, scrollWheelZoom: false });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: "© OpenStreetMap",
+  }).addTo(_map);
+  const renderer = L.canvas({ padding: 0.5 });
+
+  let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
+  routes.forEach(rt=>{
+    const line = L.polyline(rt.pts, {
+      renderer, color: ROUTE_DIM, weight: 2, opacity: 1, interactive: false,
+    }).addTo(_map);
+    _routeLayers.push(line);
+    for (const [la, lo] of rt.pts){
+      if (la < minLat) minLat = la; if (la > maxLat) maxLat = la;
+      if (lo < minLon) minLon = lo; if (lo > maxLon) maxLon = lo;
+    }
+  });
+  _allBounds = L.latLngBounds([[minLat, minLon], [maxLat, maxLon]]);
+  _map.fitBounds(_allBounds, { padding: [20, 20] });
+
+  // Leaflet needs a size recalculation once the container is visible.
+  setTimeout(()=>{ if (_map) _map.invalidateSize(); }, 60);
+
+  const pick = document.getElementById("routePick");
+  pick.onchange = ()=>{
+    const v = pick.value;
+    if (v === "all"){
+      _routeLayers.forEach(l=>l.setStyle({ color: ROUTE_DIM, weight: 2 }));
+      _map.fitBounds(_allBounds, { padding: [20, 20] });
+    } else {
+      const idx = +v;
+      _routeLayers.forEach((l, i)=>l.setStyle(
+        i === idx ? { color: ROUTE_HI, weight: 4 } : { color: "rgba(180,190,200,0.25)", weight: 1.5 }
+      ));
+      _routeLayers[idx].bringToFront();
+      _map.fitBounds(_routeLayers[idx].getBounds(), { padding: [30, 30] });
+    }
+  };
+}
+
+// Update language-dependent map text without rebuilding the map.
+function refreshRouteText(){
+  if (!LAST_RESULT) return;
+  const routes = LAST_RESULT.routes || [];
+  const hint = document.getElementById("mapHint");
+  const pick = document.getElementById("routePick");
+  if (!routes.length){
+    if (hint) hint.innerHTML = t("map.noRoutes");
+    return;
+  }
+  if (pick && pick.options.length){
+    pick.options[0].textContent = tf("map.all", {n: routes.length});
   }
 }
 
