@@ -721,9 +721,12 @@ async function handleFile(file){
     if (raw.includes("NO_XML")) {
       msg = t("err.noXml");
     } else {
-      // Surface a short detail to help diagnose unexpected failures.
-      const detail = raw.split("\n").filter(Boolean).pop() || raw;
-      msg = t("err.generic") + "\n\n[" + detail.slice(0, 300) + "]";
+      // Surface a short detail + first stack frame to diagnose remotely.
+      const stack = String(err && err.stack || "");
+      const frame = stack.split("\n").map(s=>s.trim()).filter(Boolean)
+        .find(s => /@|index\.html|\.js/.test(s)) || "";
+      const detail = (raw + (frame ? " | " + frame : "")).slice(0, 400);
+      msg = t("err.generic") + "\n\n[" + detail + "]";
     }
     alert(msg);
     showStage("drop");
