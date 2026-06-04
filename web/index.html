@@ -522,15 +522,28 @@ SLEEP = "HKCategoryTypeIdentifierSleepAnalysis"
 def _source(data):
     if data[:2] == b"PK":
         zf = zipfile.ZipFile(io.BytesIO(data))
+        infos = zf.infolist()
+        # 1) exact basename export.xml (English exports)
         name = None
-        for n in zf.namelist():
-            if n.split("/")[-1].lower() == "export.xml":
-                name = n; break
+        for inf in infos:
+            if inf.filename.split("/")[-1].lower() == "export.xml":
+                name = inf.filename; break
+        # 2) any .xml that is not the CDA file (handles localized names,
+        #    e.g. Chinese exports use 导出.xml / 导出_cda.xml). Pick the
+        #    largest such file, since the main export dwarfs everything else.
         if name is None:
-            for n in zf.namelist():
-                low = n.lower()
-                if low.endswith(".xml") and "cda" not in low:
-                    name = n; break
+            cands = [inf for inf in infos
+                     if inf.filename.lower().endswith(".xml")
+                     and "cda" not in inf.filename.lower()]
+            if cands:
+                cands.sort(key=lambda i: i.file_size, reverse=True)
+                name = cands[0].filename
+        # 3) last resort: the single largest .xml of any kind
+        if name is None:
+            xmls = [inf for inf in infos if inf.filename.lower().endswith(".xml")]
+            if xmls:
+                xmls.sort(key=lambda i: i.file_size, reverse=True)
+                name = xmls[0].filename
         if name is None:
             raise ValueError("NO_XML")
         return zf.open(name)
@@ -703,7 +716,15 @@ async function handleFile(file){
     renderCharts(LAST_RESULT);
   }catch(err){
     console.error(err);
-    const msg = String(err && err.message || err).includes("NO_XML") ? t("err.noXml") : t("err.generic");
+    const raw = String(err && err.message || err);
+    let msg;
+    if (raw.includes("NO_XML")) {
+      msg = t("err.noXml");
+    } else {
+      // Surface a short detail to help diagnose unexpected failures.
+      const detail = raw.split("\n").filter(Boolean).pop() || raw;
+      msg = t("err.generic") + "\n\n[" + detail.slice(0, 300) + "]";
+    }
     alert(msg);
     showStage("drop");
   }
