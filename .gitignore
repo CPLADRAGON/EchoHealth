@@ -1,0 +1,12 @@
+# Generated / large data — keep the repo lean
+.venv/
+data/
+output/
+
+# The raw Apple export can be very large; don't commit it
+apple_health_export/
+*.gpx
+
+# Python
+__pycache__/
+*.pyc

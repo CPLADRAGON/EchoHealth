@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EchoHealth · 回声健康</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<style>
+  :root{
+    --accent:#fa3c4c; --blue:#2e7fff; --green:#34c759; --purple:#8a5cf6; --orange:#ff9f0a;
+    --grid:#e9edf2; --ink:#1d1d1f; --muted:#6e6e73;
+    --parchment:#f5f5f7; --hairline:rgba(0,0,0,.10); --canvas:#fff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:var(--parchment); color:var(--ink);
+    -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+    line-height:1.5;
+  }
+  .wrap{max-width:1200px;margin:0 auto;padding:0 28px}
+
+  /* ---- header ---- */
+  header{
+    background:var(--canvas); border-bottom:1px solid var(--hairline);
+    padding:30px 0 26px;
+  }
+  .head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap}
+  header h1{margin:0;font-size:32px;font-weight:600;letter-spacing:-.6px}
+  header p{margin:8px 0 0;font-size:16px;color:var(--muted);max-width:640px}
+  .head-actions{display:flex;align-items:center;gap:12px;flex-shrink:0}
+  .howlink{
+    background:none;border:none;color:var(--blue);font-size:14px;cursor:pointer;
+    padding:8px 4px;font-family:inherit;
+  }
+  .howlink:hover{text-decoration:underline}
+  /* language segmented control */
+  .lang{display:inline-flex;border:1px solid var(--hairline);border-radius:9999px;overflow:hidden;background:var(--canvas)}
+  .lang button{
+    border:none;background:none;font-family:inherit;font-size:13px;font-weight:500;
+    padding:7px 14px;cursor:pointer;color:var(--muted);
+  }
+  .lang button.active{background:var(--ink);color:#fff}
+
+  /* ---- privacy strip ---- */
+  .privacy-strip{
+    background:var(--canvas);border-bottom:1px solid var(--hairline);
+    font-size:13px;color:var(--muted);padding:10px 0;
+  }
+  .privacy-strip b{color:var(--ink);font-weight:600}
+
+  /* ---- dropzone ---- */
+  .stage{padding:44px 0 60px}
+  .drop{
+    background:var(--canvas);border:1.5px dashed var(--hairline);border-radius:18px;
+    padding:54px 28px;text-align:center;transition:border-color .15s,background .15s;cursor:pointer;
+  }
+  .drop.drag{border-color:var(--accent);background:#fff7f7}
+  .drop h2{margin:0 0 8px;font-size:21px;font-weight:600;letter-spacing:-.3px}
+  .drop p{margin:0 auto;max-width:460px;color:var(--muted);font-size:15px}
+  .drop .btn{
+    display:inline-block;margin-top:22px;background:var(--ink);color:#fff;border:none;
+    border-radius:9999px;padding:12px 26px;font-size:15px;font-weight:500;cursor:pointer;font-family:inherit;
+  }
+  .drop .formats{margin-top:16px;font-size:12.5px;color:var(--muted)}
+  input[type=file]{display:none}
+
+  /* ---- loading ---- */
+  .loading{display:none;text-align:center;padding:60px 0}
+  .loading.show{display:block}
+  .spinner{
+    width:34px;height:34px;border-radius:50%;border:3px solid var(--grid);
+    border-top-color:var(--accent);animation:spin 1s linear infinite;margin:0 auto 18px;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading p{color:var(--muted);font-size:15px;margin:4px 0}
+  .loading .big{color:var(--ink);font-size:17px;font-weight:600}
+
+  /* ---- results ---- */
+  .results{display:none}
+  .results.show{display:block}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:30px 0 8px}
+  .kpi{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:18px 18px 16px}
+  .kpi-lab{font-size:12.5px;color:var(--muted);font-weight:500}
+  .kpi-val{font-size:26px;font-weight:600;letter-spacing:-.4px;margin-top:6px}
+  .kpi-sub{font-size:12px;color:var(--muted);margin-top:2px}
+
+  section.charts{padding:18px 0 10px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:20px}
+  .card{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:18px 18px 8px}
+  .card h3{margin:0 0 2px;font-size:17px;font-weight:600;letter-spacing:-.2px}
+  .card .csub{margin:0 0 8px;font-size:13px;color:var(--muted)}
+  .reset{
+    background:none;border:1px solid var(--hairline);border-radius:9999px;color:var(--ink);
+    font-family:inherit;font-size:13px;padding:8px 18px;cursor:pointer;margin:26px 0 0;
+  }
+
+  footer{padding:34px 0 50px;color:var(--muted);font-size:13px;text-align:center}
+
+  /* ---- modal ---- */
+  .overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.36);backdrop-filter:blur(4px);
+    display:none;align-items:center;justify-content:center;padding:24px;z-index:50;
+  }
+  .overlay.show{display:flex}
+  .modal{
+    background:var(--canvas);border-radius:20px;max-width:560px;width:100%;
+    max-height:88vh;overflow:auto;padding:34px 34px 28px;border:1px solid var(--hairline);
+  }
+  .modal h2{margin:0 0 4px;font-size:24px;font-weight:600;letter-spacing:-.4px}
+  .modal .lede{margin:0 0 22px;color:var(--muted);font-size:15px}
+  .badge{
+    display:inline-flex;align-items:center;gap:7px;background:var(--parchment);
+    border:1px solid var(--hairline);border-radius:9999px;padding:6px 14px;font-size:12.5px;
+    color:var(--ink);font-weight:500;margin-bottom:18px;
+  }
+  .badge .dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+  .block-title{font-size:15px;font-weight:600;margin:18px 0 8px}
+  .privacy-body{font-size:14px;color:var(--muted);background:var(--parchment);border-left:3px solid var(--accent);border-radius:8px;padding:14px 16px}
+  ol.steps{margin:0;padding-left:0;list-style:none;counter-reset:s}
+  ol.steps li{
+    counter-increment:s;position:relative;padding:0 0 14px 40px;font-size:14px;color:var(--ink);
+  }
+  ol.steps li::before{
+    content:counter(s);position:absolute;left:0;top:-2px;width:26px;height:26px;border-radius:50%;
+    background:var(--ink);color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;
+  }
+  ol.steps li b{font-weight:600}
+  .modal .gotit{
+    margin-top:24px;width:100%;background:var(--ink);color:#fff;border:none;border-radius:12px;
+    padding:14px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;
+  }
+
+  @media (max-width:560px){
+    .wrap{padding:0 18px}
+    header h1{font-size:26px}
+    .grid{grid-template-columns:1fr}
+    .modal{padding:26px 22px 22px}
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== onboarding / how-it-works modal ===== -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <span class="badge"><span class="dot"></span><span data-i="onb.badge"></span></span>
+    <h2 data-i="onb.title"></h2>
+    <p class="lede" data-i="onb.lede"></p>
+
+    <div class="block-title" data-i="onb.privacyTitle"></div>
+    <div class="privacy-body" data-i="onb.privacyBody"></div>
+
+    <div class="block-title" data-i="onb.howTitle"></div>
+    <ol class="steps" id="stepsList"></ol>
+
+    <button class="gotit" id="gotitBtn" data-i="onb.gotIt"></button>
+  </div>
+</div>
+
+<header>
+  <div class="wrap head-row">
+    <div>
+      <h1 data-i="app.title"></h1>
+      <p data-i="app.subtitle"></p>
+    </div>
+    <div class="head-actions">
+      <button class="howlink" id="howBtn" data-i="nav.how"></button>
+      <div class="lang">
+        <button data-lang="en">EN</button>
+        <button data-lang="zh">中文</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="privacy-strip">
+  <div class="wrap"><span data-i="privacy.strip"></span></div>
+</div>
+
+<main class="wrap stage">
+  <!-- dropzone -->
+  <div class="drop" id="drop">
+    <h2 data-i="drop.title"></h2>
+    <p data-i="drop.hint"></p>
+    <button class="btn" id="pickBtn" data-i="drop.button"></button>
+    <div class="formats" data-i="drop.formats"></div>
+    <input type="file" id="fileInput" accept=".xml,.zip" />
+  </div>
+
+  <!-- loading -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <p class="big" id="loadBig"></p>
+    <p id="loadSmall"></p>
+  </div>
+
+  <!-- results -->
+  <div class="results" id="results">
+    <div class="kpis" id="kpis"></div>
+    <section class="charts">
+      <div class="grid" id="chartGrid"></div>
+    </section>
+    <button class="reset" id="resetBtn" data-i="results.reset"></button>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap" data-i="footer.text"></div>
+</footer>
+
+<script>
+/* =====================================================================
+   i18n dictionary
+   ===================================================================== */
+const I18N = {
+  en: {
+    "app.title": "EchoHealth",
+    "app.subtitle": "Turn your Apple Health export into an interactive dashboard — entirely inside your browser. Nothing is uploaded.",
+    "nav.how": "How it works",
+    "privacy.strip": "<b>Private by design.</b> Your data is processed on this device and never leaves your browser.",
+    "drop.title": "Drop your Apple Health export here",
+    "drop.hint": "Drag in your export.zip (or the export.xml inside it). We analyze it instantly, right here on your device.",
+    "drop.button": "Choose file",
+    "drop.formats": "Accepts export.zip or export.xml",
+    "load.boot": "Starting the analysis engine…",
+    "load.bootSmall": "Loading a small runtime in your browser (first time only).",
+    "load.parse": "Reading and analyzing your health data…",
+    "load.parseSmall": "Large exports can take a moment. Everything stays on your device.",
+    "results.reset": "Analyze another file",
+    "kpi.dateRange": "Date range",
+    "kpi.records": "Health records",
+    "kpi.totalSteps": "Total steps",
+    "kpi.totalDistance": "Total distance",
+    "kpi.activeDays": "Active days",
+    "kpi.workouts": "Workouts",
+    "kpi.avgRestingHr": "Avg resting HR",
+    "kpi.km": "km",
+    "kpi.bpm": "bpm",
+    "kpi.days": "days",
+    "chart.steps.title": "Daily steps",
+    "chart.steps.sub": "Daily total with a 30-day rolling average",
+    "chart.steps.bars": "Daily steps",
+    "chart.steps.line": "30-day average",
+    "chart.dist.title": "Distance by month",
+    "chart.dist.sub": "Total walking + running distance per month",
+    "chart.rhr.title": "Resting heart rate",
+    "chart.rhr.sub": "Daily resting heart rate over time",
+    "chart.hrv.title": "Heart rate variability",
+    "chart.hrv.sub": "Daily HRV (SDNN) — a recovery signal",
+    "chart.sleep.title": "Sleep duration",
+    "chart.sleep.sub": "Hours asleep per night",
+    "chart.workouts.title": "Workouts by month",
+    "chart.workouts.sub": "Number of recorded workouts per month",
+    "axis.steps": "Steps",
+    "axis.distance": "Distance (km)",
+    "axis.bpm": "Beats / min",
+    "axis.ms": "HRV (ms)",
+    "axis.hours": "Hours",
+    "axis.count": "Workouts",
+    "footer.text": "EchoHealth · Runs locally in your browser · No account, no servers, no tracking.",
+    "onb.badge": "100% on-device · nothing uploaded",
+    "onb.title": "Welcome",
+    "onb.lede": "Here's how this tool works and how your privacy is protected.",
+    "onb.privacyTitle": "Your privacy",
+    "onb.privacyBody": "This tool runs entirely inside your web browser. Your health file is read and analyzed on your own device — it is never uploaded to any server and nothing is sent over the internet. When you close the tab, the data is gone.",
+    "onb.howTitle": "How to use it",
+    "onb.gotIt": "Got it — let's start",
+    "err.noXml": "Couldn't find export.xml inside that file. Please choose your Apple Health export.zip or export.xml.",
+    "err.generic": "Something went wrong while reading the file. Please make sure it's a valid Apple Health export."
+  },
+  zh: {
+    "app.title": "回声健康",
+    "app.subtitle": "把你的 Apple 健康导出文件变成可交互的数据看板——全部在你的浏览器中完成，不上传任何数据。",
+    "nav.how": "使用说明",
+    "privacy.strip": "<b>隐私优先设计。</b> 你的数据只在本设备处理，绝不会离开你的浏览器。",
+    "drop.title": "把你的 Apple 健康导出文件拖到这里",
+    "drop.hint": "拖入 export.zip（或其中的 export.xml）。我们会立即在你的设备上完成分析。",
+    "drop.button": "选择文件",
+    "drop.formats": "支持 export.zip 或 export.xml",
+    "load.boot": "正在启动分析引擎……",
+    "load.bootSmall": "正在浏览器中加载一个小型运行环境（仅首次需要）。",
+    "load.parse": "正在读取并分析你的健康数据……",
+    "load.parseSmall": "较大的导出文件可能需要一点时间。所有数据都保留在你的设备上。",
+    "results.reset": "分析另一个文件",
+    "kpi.dateRange": "数据日期范围",
+    "kpi.records": "健康记录数",
+    "kpi.totalSteps": "总步数",
+    "kpi.totalDistance": "总距离",
+    "kpi.activeDays": "活跃天数",
+    "kpi.workouts": "训练次数",
+    "kpi.avgRestingHr": "平均静息心率",
+    "kpi.km": "公里",
+    "kpi.bpm": "次/分",
+    "kpi.days": "天",
+    "chart.steps.title": "每日步数",
+    "chart.steps.sub": "每日步数与 30 天滚动平均",
+    "chart.steps.bars": "每日步数",
+    "chart.steps.line": "30 天平均",
+    "chart.dist.title": "每月距离",
+    "chart.dist.sub": "每月步行 + 跑步总距离",
+    "chart.rhr.title": "静息心率",
+    "chart.rhr.sub": "随时间变化的每日静息心率",
+    "chart.hrv.title": "心率变异性",
+    "chart.hrv.sub": "每日 HRV（SDNN）——恢复状态信号",
+    "chart.sleep.title": "睡眠时长",
+    "chart.sleep.sub": "每晚的睡眠小时数",
+    "chart.workouts.title": "每月训练",
+    "chart.workouts.sub": "每月记录的训练次数",
+    "axis.steps": "步数",
+    "axis.distance": "距离（公里）",
+    "axis.bpm": "次/分",
+    "axis.ms": "HRV（毫秒）",
+    "axis.hours": "小时",
+    "axis.count": "训练次数",
+    "footer.text": "回声健康 · 在你的浏览器本地运行 · 无账号、无服务器、无追踪。",
+    "onb.badge": "100% 本地处理 · 不上传任何数据",
+    "onb.title": "欢迎使用",
+    "onb.lede": "下面介绍这个工具的工作方式，以及我们如何保护你的隐私。",
+    "onb.privacyTitle": "你的隐私",
+    "onb.privacyBody": "本工具完全在你的网页浏览器中运行。你的健康文件只在你自己的设备上读取和分析——绝不会上传到任何服务器，也不会通过网络发送。关闭页面后，数据即消失。",
+    "onb.howTitle": "如何使用",
+    "onb.gotIt": "明白了，开始使用",
+    "err.noXml": "在该文件中找不到 export.xml。请选择你的 Apple 健康 export.zip 或 export.xml。",
+    "err.generic": "读取文件时出错。请确认这是有效的 Apple 健康导出文件。"
+  }
+};
+
+const TUTORIAL = {
+  en: [
+    "On your iPhone, open the <b>Health</b> app.",
+    "Tap your <b>profile picture</b> in the top-right corner.",
+    "Scroll to the bottom and tap <b>Export All Health Data</b>, then confirm. Apple prepares a file called <b>export.zip</b> (this can take a few minutes).",
+    "Send <b>export.zip</b> to this computer — by AirDrop, email, or a cable.",
+    "Drag that <b>.zip</b> (or the <b>export.xml</b> inside it) onto the box on this page. Your dashboard appears instantly."
+  ],
+  zh: [
+    "在 iPhone 上打开 <b>“健康”</b> 应用。",
+    "点击右上角的 <b>个人头像</b>。",
+    "滑到页面底部，点击 <b>“导出所有健康数据”</b> 并确认。系统会生成一个名为 <b>export.zip</b> 的文件（可能需要几分钟）。",
+    "通过隔空投送、邮件或数据线，把 <b>export.zip</b> 传到这台电脑。",
+    "把该 <b>.zip</b>（或其中的 <b>export.xml</b>）拖到本页面的方框中，看板会立即生成。"
+  ]
+};
+
+/* =====================================================================
+   language handling
+   ===================================================================== */
+let LANG = localStorage.getItem("ah_lang");
+if (!LANG) LANG = (navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en";
+if (!["en","zh"].includes(LANG)) LANG = "en";
+
+function t(key){ return (I18N[LANG] && I18N[LANG][key]) || I18N.en[key] || key; }
+
+function applyLang(){
+  document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll("[data-i]").forEach(el=>{
+    el.innerHTML = t(el.getAttribute("data-i"));
+  });
+  // tutorial steps
+  const list = document.getElementById("stepsList");
+  list.innerHTML = "";
+  TUTORIAL[LANG].forEach(html=>{
+    const li = document.createElement("li");
+    li.innerHTML = html;
+    list.appendChild(li);
+  });
+  // active language button
+  document.querySelectorAll(".lang button").forEach(b=>{
+    b.classList.toggle("active", b.getAttribute("data-lang") === LANG);
+  });
+  // re-render results if we already have data
+  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderCharts(LAST_RESULT); }
+}
+
+document.querySelectorAll(".lang button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    LANG = b.getAttribute("data-lang");
+    localStorage.setItem("ah_lang", LANG);
+    applyLang();
+  });
+});
+
+/* =====================================================================
+   onboarding modal
+   ===================================================================== */
+const overlay = document.getElementById("overlay");
+function openModal(){ overlay.classList.add("show"); }
+function closeModal(){ overlay.classList.remove("show"); }
+document.getElementById("gotitBtn").addEventListener("click", ()=>{
+  localStorage.setItem("ah_onboarded","1"); closeModal();
+});
+document.getElementById("howBtn").addEventListener("click", openModal);
+overlay.addEventListener("click", e=>{ if(e.target===overlay) closeModal(); });
+
+/* =====================================================================
+   embedded Python parser (runs in Pyodide)
+   ===================================================================== */
+const PY_CODE = `
+import json, io, zipfile
+import xml.etree.ElementTree as ET
+from collections import defaultdict, deque
+from datetime import datetime
+
+SUM_TYPES = {
+    "HKQuantityTypeIdentifierStepCount": "steps",
+    "HKQuantityTypeIdentifierDistanceWalkingRunning": "distance",
+    "HKQuantityTypeIdentifierActiveEnergyBurned": "energy",
+}
+RHR = "HKQuantityTypeIdentifierRestingHeartRate"
+HRV = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
+SLEEP = "HKCategoryTypeIdentifierSleepAnalysis"
+
+def _source(data):
+    if data[:2] == b"PK":
+        zf = zipfile.ZipFile(io.BytesIO(data))
+        name = None
+        for n in zf.namelist():
+            if n.split("/")[-1].lower() == "export.xml":
+                name = n; break
+        if name is None:
+            for n in zf.namelist():
+                low = n.lower()
+                if low.endswith(".xml") and "cda" not in low:
+                    name = n; break
+        if name is None:
+            raise ValueError("NO_XML")
+        return zf.open(name)
+    return io.BytesIO(data)
+
+def process(js_bytes):
+    try:
+        data = js_bytes.to_py().tobytes()
+    except Exception:
+        data = bytes(js_bytes)
+    src = _source(data)
+
+    day_steps = defaultdict(float)
+    day_dist = defaultdict(float)
+    rhr = defaultdict(list)
+    hrv = defaultdict(list)
+    sleep_night = defaultdict(float)
+    workouts_month = defaultdict(int)
+    workout_total = 0
+    rec = 0
+    dmin = dmax = None
+
+    for event, elem in ET.iterparse(src, events=("end",)):
+        tag = elem.tag
+        if tag == "Record":
+            rec += 1
+            rtype = elem.get("type")
+            start = elem.get("startDate")
+            day = start[:10] if start else None
+            if day:
+                if dmin is None or day < dmin: dmin = day
+                if dmax is None or day > dmax: dmax = day
+            if rtype in SUM_TYPES and day:
+                col = SUM_TYPES[rtype]
+                try: v = float(elem.get("value"))
+                except (TypeError, ValueError): v = 0.0
+                if col == "steps": day_steps[day] += v
+                elif col == "distance": day_dist[day] += v
+            elif rtype == RHR and day:
+                try: rhr[day].append(float(elem.get("value")))
+                except (TypeError, ValueError): pass
+            elif rtype == HRV and day:
+                try: hrv[day].append(float(elem.get("value")))
+                except (TypeError, ValueError): pass
+            elif rtype == SLEEP:
+                val = elem.get("value") or ""
+                if "Asleep" in val:
+                    s = elem.get("startDate"); e = elem.get("endDate")
+                    if s and e:
+                        try:
+                            ds = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
+                            de = datetime.strptime(e[:19], "%Y-%m-%d %H:%M:%S")
+                            hrs = (de - ds).total_seconds() / 3600.0
+                            if 0 < hrs < 24:
+                                sleep_night[e[:10]] += hrs
+                        except ValueError:
+                            pass
+        elif tag == "Workout":
+            start = elem.get("startDate")
+            if start:
+                workouts_month[start[:7]] += 1
+                workout_total += 1
+        elem.clear()
+
+    sdays = sorted(day_steps.keys())
+    svals = [round(day_steps[d], 0) for d in sdays]
+    roll = []
+    win = deque(); s = 0.0
+    for v in svals:
+        win.append(v); s += v
+        if len(win) > 30:
+            s -= win.popleft()
+        roll.append(round(s / len(win), 0))
+
+    mdist = defaultdict(float)
+    for d, v in day_dist.items():
+        mdist[d[:7]] += v
+    md_x = sorted(mdist.keys())
+    md_y = [round(mdist[m], 1) for m in md_x]
+
+    rhr_x = sorted(rhr.keys())
+    rhr_y = [round(sum(rhr[d]) / len(rhr[d]), 0) for d in rhr_x]
+    hrv_x = sorted(hrv.keys())
+    hrv_y = [round(sum(hrv[d]) / len(hrv[d]), 1) for d in hrv_x]
+    sl_x = sorted(sleep_night.keys())
+    sl_y = [round(sleep_night[d], 2) for d in sl_x]
+    wm_x = sorted(workouts_month.keys())
+    wm_y = [workouts_month[m] for m in wm_x]
+
+    avg_rhr = round(sum(rhr_y) / len(rhr_y), 0) if rhr_y else None
+
+    return json.dumps({
+        "meta": {
+            "date_min": dmin, "date_max": dmax, "records": rec,
+            "total_steps": int(sum(day_steps.values())),
+            "total_distance": round(sum(day_dist.values()), 1),
+            "active_days": len(day_steps),
+            "workouts": workout_total,
+            "avg_resting_hr": avg_rhr,
+        },
+        "steps_daily": {"x": sdays, "y": svals, "roll": roll},
+        "monthly_distance": {"x": md_x, "y": md_y},
+        "resting_hr": {"x": rhr_x, "y": rhr_y},
+        "hrv": {"x": hrv_x, "y": hrv_y},
+        "sleep": {"x": sl_x, "y": sl_y},
+        "workouts_month": {"x": wm_x, "y": wm_y},
+    })
+`;
+
+/* =====================================================================
+   Pyodide boot (lazy)
+   ===================================================================== */
+let pyodideReady = null;
+async function getPyodide(){
+  if (!pyodideReady){
+    pyodideReady = (async ()=>{
+      const py = await loadPyodide();
+      py.runPython(PY_CODE);
+      return py;
+    })();
+  }
+  return pyodideReady;
+}
+
+/* =====================================================================
+   file handling + analysis
+   ===================================================================== */
+let LAST_RESULT = null;
+const drop = document.getElementById("drop");
+const loading = document.getElementById("loading");
+const results = document.getElementById("results");
+const fileInput = document.getElementById("fileInput");
+
+function showStage(stage){
+  drop.style.display = stage === "drop" ? "" : "none";
+  loading.classList.toggle("show", stage === "loading");
+  results.classList.toggle("show", stage === "results");
+}
+function setLoading(bigKey, smallKey){
+  document.getElementById("loadBig").textContent = t(bigKey);
+  document.getElementById("loadSmall").textContent = t(smallKey);
+}
+
+document.getElementById("pickBtn").addEventListener("click", ()=>fileInput.click());
+drop.addEventListener("click", e=>{ if(e.target===drop || e.target.tagName==="H2" || e.target.tagName==="P") fileInput.click(); });
+fileInput.addEventListener("change", ()=>{ if(fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.add("drag");}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.remove("drag");}));
+drop.addEventListener("drop", e=>{
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+async function handleFile(file){
+  try{
+    showStage("loading");
+    setLoading("load.boot","load.bootSmall");
+    const py = await getPyodide();
+
+    setLoading("load.parse","load.parseSmall");
+    const buf = await file.arrayBuffer();
+    py.globals.set("FILE_BYTES", new Uint8Array(buf));
+    const jsonStr = await py.runPythonAsync("process(FILE_BYTES)");
+    py.globals.delete("FILE_BYTES");
+
+    LAST_RESULT = JSON.parse(jsonStr);
+    renderKPIs(LAST_RESULT);
+    renderCharts(LAST_RESULT);
+    showStage("results");
+  }catch(err){
+    console.error(err);
+    const msg = String(err && err.message || err).includes("NO_XML") ? t("err.noXml") : t("err.generic");
+    alert(msg);
+    showStage("drop");
+  }
+}
+
+document.getElementById("resetBtn").addEventListener("click", ()=>{
+  fileInput.value = "";
+  showStage("drop");
+});
+
+/* =====================================================================
+   rendering
+   ===================================================================== */
+function fmtInt(n){ return (n==null) ? "—" : Number(n).toLocaleString(LANG==="zh"?"zh-CN":"en-US"); }
+
+function renderKPIs(r){
+  const m = r.meta;
+  const cards = [
+    {lab:t("kpi.dateRange"), val:(m.date_min||"—")+" → "+(m.date_max||"—"), sub:""},
+    {lab:t("kpi.totalSteps"), val:fmtInt(m.total_steps), sub:""},
+    {lab:t("kpi.totalDistance"), val:fmtInt(Math.round(m.total_distance)), sub:t("kpi.km")},
+    {lab:t("kpi.activeDays"), val:fmtInt(m.active_days), sub:t("kpi.days")},
+    {lab:t("kpi.workouts"), val:fmtInt(m.workouts), sub:""},
+    {lab:t("kpi.avgRestingHr"), val:(m.avg_resting_hr==null?"—":fmtInt(m.avg_resting_hr)), sub:t("kpi.bpm")},
+    {lab:t("kpi.records"), val:fmtInt(m.records), sub:""},
+  ];
+  document.getElementById("kpis").innerHTML = cards.map(c=>`
+    <div class="kpi">
+      <div class="kpi-lab">${c.lab}</div>
+      <div class="kpi-val">${c.val}</div>
+      <div class="kpi-sub">${c.sub||"&nbsp;"}</div>
+    </div>`).join("");
+}
+
+const COL = {accent:"#fa3c4c", blue:"#2e7fff", green:"#34c759", purple:"#8a5cf6", orange:"#ff9f0a", grid:"#e9edf2", ink:"#1d1d1f"};
+const FONT = {family:"-apple-system, Segoe UI, Roboto, sans-serif", color:COL.ink, size:12};
+
+function baseLayout(yTitle){
+  return {
+    font:FONT, paper_bgcolor:"white", plot_bgcolor:"white",
+    margin:{l:58,r:18,t:10,b:40}, height:320, hovermode:"x unified",
+    xaxis:{gridcolor:COL.grid, zeroline:false},
+    yaxis:{gridcolor:COL.grid, zeroline:false, title:{text:yTitle, font:{size:12}}},
+    showlegend:false,
+  };
+}
+const PLOT_CFG = {displayModeBar:false, responsive:true};
+
+function card(id, titleKey, subKey){
+  return `<div class="card"><h3>${t(titleKey)}</h3><p class="csub">${t(subKey)}</p><div id="${id}"></div></div>`;
+}
+
+function renderCharts(r){
+  const grid = document.getElementById("chartGrid");
+  const blocks = [];
+  if (r.steps_daily.x.length) blocks.push(card("c_steps","chart.steps.title","chart.steps.sub"));
+  if (r.monthly_distance.x.length) blocks.push(card("c_dist","chart.dist.title","chart.dist.sub"));
+  if (r.resting_hr.x.length) blocks.push(card("c_rhr","chart.rhr.title","chart.rhr.sub"));
+  if (r.hrv.x.length) blocks.push(card("c_hrv","chart.hrv.title","chart.hrv.sub"));
+  if (r.sleep.x.length) blocks.push(card("c_sleep","chart.sleep.title","chart.sleep.sub"));
+  if (r.workouts_month.x.length) blocks.push(card("c_wo","chart.workouts.title","chart.workouts.sub"));
+  grid.innerHTML = blocks.join("");
+
+  if (r.steps_daily.x.length){
+    Plotly.newPlot("c_steps", [
+      {type:"bar", x:r.steps_daily.x, y:r.steps_daily.y, name:t("chart.steps.bars"),
+       marker:{color:"rgba(250,60,76,0.18)"}, hovertemplate:"%{x}<br>%{y:,.0f}<extra></extra>"},
+      {type:"scatter", mode:"lines", x:r.steps_daily.x, y:r.steps_daily.roll, name:t("chart.steps.line"),
+       line:{color:COL.accent, width:2.5}, hovertemplate:"%{x}<br>%{y:,.0f}<extra></extra>"}
+    ], baseLayout(t("axis.steps")), PLOT_CFG);
+  }
+  if (r.monthly_distance.x.length){
+    Plotly.newPlot("c_dist", [
+      {type:"bar", x:r.monthly_distance.x, y:r.monthly_distance.y,
+       marker:{color:COL.blue}, hovertemplate:"%{x}<br>%{y:.1f} "+t("kpi.km")+"<extra></extra>"}
+    ], baseLayout(t("axis.distance")), PLOT_CFG);
+  }
+  if (r.resting_hr.x.length){
+    Plotly.newPlot("c_rhr", [
+      {type:"scatter", mode:"lines", x:r.resting_hr.x, y:r.resting_hr.y,
+       line:{color:COL.accent, width:2}, hovertemplate:"%{x}<br>%{y:.0f} "+t("kpi.bpm")+"<extra></extra>"}
+    ], baseLayout(t("axis.bpm")), PLOT_CFG);
+  }
+  if (r.hrv.x.length){
+    Plotly.newPlot("c_hrv", [
+      {type:"scatter", mode:"lines", x:r.hrv.x, y:r.hrv.y,
+       line:{color:COL.purple, width:2}, hovertemplate:"%{x}<br>%{y:.1f} ms<extra></extra>"}
+    ], baseLayout(t("axis.ms")), PLOT_CFG);
+  }
+  if (r.sleep.x.length){
+    Plotly.newPlot("c_sleep", [
+      {type:"bar", x:r.sleep.x, y:r.sleep.y,
+       marker:{color:COL.green}, hovertemplate:"%{x}<br>%{y:.1f} "+t("axis.hours")+"<extra></extra>"}
+    ], baseLayout(t("axis.hours")), PLOT_CFG);
+  }
+  if (r.workouts_month.x.length){
+    Plotly.newPlot("c_wo", [
+      {type:"bar", x:r.workouts_month.x, y:r.workouts_month.y,
+       marker:{color:COL.orange}, hovertemplate:"%{x}<br>%{y}<extra></extra>"}
+    ], baseLayout(t("axis.count")), PLOT_CFG);
+  }
+}
+
+/* =====================================================================
+   init
+   ===================================================================== */
+applyLang();
+if (!localStorage.getItem("ah_onboarded")) openModal();
+</script>
+</body>
+</html>
