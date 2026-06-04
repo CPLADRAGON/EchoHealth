@@ -926,7 +926,7 @@ async function sendAi(question){
     const data = await resp.json().catch(()=>({}));
     if (!resp.ok || !data.reply){
       thinking.classList.add("err");
-      thinking.textContent = t("ai.error");
+      thinking.textContent = data.error ? (t("ai.error") + " (" + data.error + ")") : t("ai.error");
     } else {
       thinking.textContent = data.reply;
       AI_HISTORY.push({role:"user", text:question});
