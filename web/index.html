@@ -116,6 +116,11 @@
   .ai-msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
   .ai-msg.bot{align-self:flex-start;background:var(--parchment);color:var(--ink);border-bottom-left-radius:5px}
   .ai-msg.bot.err{background:#fff4f4;color:var(--accent);border:1px solid var(--hairline)}
+  .ai-msg.bot p{margin:0 0 6px}
+  .ai-msg.bot ul{margin:6px 0;padding-left:20px}
+  .ai-msg.bot li{margin:2px 0}
+  .ai-msg.bot code{background:rgba(0,0,0,.06);border-radius:4px;padding:1px 5px;font-size:12.5px}
+  .ai-msg.bot strong{font-weight:600}
   .ai-chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
   .ai-chip{
     background:var(--parchment);border:1px solid var(--hairline);border-radius:9999px;
@@ -871,11 +876,42 @@ function buildHealthSummary(){
   return lines.join("\n");
 }
 
+// Minimal, safe Markdown -> HTML for AI replies (escape first, then format).
+function mdToHtml(src){
+  let s = String(src || "");
+  s = s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  // code spans
+  s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+  // bold then italic
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  // split into lines, group bullet runs into <ul>
+  const lines = s.split(/\r?\n/);
+  let html = "", inList = false;
+  for (let line of lines){
+    const m = line.match(/^\s*[-*•]\s+(.*)$/);
+    if (m){
+      if (!inList){ html += "<ul>"; inList = true; }
+      html += "<li>" + m[1] + "</li>";
+    } else {
+      if (inList){ html += "</ul>"; inList = false; }
+      if (line.trim() === ""){ html += "<br>"; }
+      else { html += line + "<br>"; }
+    }
+  }
+  if (inList) html += "</ul>";
+  return html;
+}
+
 function aiAppend(role, text, isErr){
   const log = document.getElementById("aiLog");
   const div = document.createElement("div");
   div.className = "ai-msg " + (role==="user" ? "user" : "bot") + (isErr ? " err" : "");
-  div.textContent = text;
+  if (role === "bot" && !isErr){
+    div.innerHTML = mdToHtml(text);
+  } else {
+    div.textContent = text;
+  }
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
   return div;
@@ -928,7 +964,7 @@ async function sendAi(question){
       thinking.classList.add("err");
       thinking.textContent = data.error ? (t("ai.error") + " (" + data.error + ")") : t("ai.error");
     } else {
-      thinking.textContent = data.reply;
+      thinking.innerHTML = mdToHtml(data.reply);
       AI_HISTORY.push({role:"user", text:question});
       AI_HISTORY.push({role:"model", text:data.reply});
     }
