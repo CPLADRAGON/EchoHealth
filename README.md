@@ -26,6 +26,24 @@ Then open `http://localhost:8777/` and drop your export in.
 **Deploy (Vercel):** import this repo, set **Root Directory = `web`**, framework
 "Other", no build command. It deploys as a static site. (GitHub Pages also works.)
 
+### AI Health Assistant (optional)
+
+After your data loads, an **AI Health Assistant** panel lets users ask questions
+about their stats. It calls a tiny Vercel serverless function (`web/api/chat.js`)
+that proxies to Google **Gemini 3.1 Flash Lite** — the API key lives **only** on
+the server and never reaches the browser. Only **summary statistics** (not raw
+records) are sent to the model.
+
+To enable it on Vercel, add an environment variable:
+
+- `GEMINI_API_KEY` — your Google AI Studio API key (required)
+- `GEMINI_MODEL` — optional, defaults to `gemini-3.1-flash-lite`
+
+The static dashboard works fully offline without this; only the chat panel needs
+the function. (Gemini/Vercel may be unreachable in regions that block them, e.g.
+mainland China, but the rest of the app still runs locally.)
+
+
 > Privacy: this repo intentionally excludes all personal health data
 > (`apple_health_export/`, `*.gpx`) via `.gitignore`. Only the code is published.
 

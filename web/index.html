@@ -18,7 +18,7 @@
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     background:var(--parchment); color:var(--ink);
     -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
-    line-height:1.5;
+    line-height:1.5; overflow-x:hidden;
   }
   .wrap{max-width:1200px;margin:0 auto;padding:0 28px}
 
@@ -89,12 +89,54 @@
 
   section.charts{padding:18px 0 10px}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:20px}
-  .card{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:18px 18px 8px}
+  .card{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:18px 18px 8px;min-width:0}
   .card h3{margin:0 0 2px;font-size:17px;font-weight:600;letter-spacing:-.2px}
   .card .csub{margin:0 0 8px;font-size:13px;color:var(--muted)}
+  .plotwrap{width:100%;max-width:100%}
+  .insight{
+    margin:8px 2px 10px;padding-top:10px;border-top:1px solid var(--hairline);
+    font-size:13px;line-height:1.6;color:var(--ink);
+  }
   .reset{
     background:none;border:1px solid var(--hairline);border-radius:9999px;color:var(--ink);
     font-family:inherit;font-size:13px;padding:8px 18px;cursor:pointer;margin:26px 0 0;
+  }
+
+  /* ---- AI assistant ---- */
+  .ai{
+    background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;
+    padding:20px 20px 18px;margin-top:24px;
+  }
+  .ai-head h3{margin:0;font-size:17px;font-weight:600;letter-spacing:-.3px;color:var(--ink)}
+  .ai-disc{margin:4px 0 0;font-size:12px;color:var(--muted)}
+  .ai-log{
+    margin:16px 0 0;max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;
+  }
+  .ai-msg{font-size:14px;line-height:1.6;padding:10px 13px;border-radius:14px;max-width:88%;white-space:pre-wrap;word-wrap:break-word}
+  .ai-msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
+  .ai-msg.bot{align-self:flex-start;background:var(--parchment);color:var(--ink);border-bottom-left-radius:5px}
+  .ai-msg.bot.err{background:#fff4f4;color:var(--accent);border:1px solid var(--hairline)}
+  .ai-chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
+  .ai-chip{
+    background:var(--parchment);border:1px solid var(--hairline);border-radius:9999px;
+    color:var(--ink);font-family:inherit;font-size:12.5px;padding:7px 13px;cursor:pointer;
+  }
+  .ai-chip:hover{border-color:var(--accent)}
+  .ai-input{display:flex;gap:10px;margin-top:14px;align-items:flex-end}
+  .ai-input textarea{
+    flex:1;resize:none;font-family:inherit;font-size:14px;line-height:1.5;color:var(--ink);
+    background:var(--canvas);border:1px solid var(--hairline);border-radius:14px;padding:11px 14px;
+    max-height:140px;overflow-y:auto;
+  }
+  .ai-input textarea:focus{outline:none;border-color:var(--accent)}
+  .ai-input button{
+    background:var(--accent);border:none;border-radius:14px;color:#fff;font-family:inherit;
+    font-size:14px;font-weight:500;padding:11px 20px;cursor:pointer;white-space:nowrap;
+  }
+  .ai-input button:disabled{opacity:.5;cursor:default}
+  @media(max-width:560px){
+    .ai-msg{max-width:94%}
+    .ai-input button{padding:11px 16px}
   }
 
   footer{padding:34px 0 50px;color:var(--muted);font-size:13px;text-align:center}
@@ -203,6 +245,21 @@
     <section class="charts">
       <div class="grid" id="chartGrid"></div>
     </section>
+
+    <!-- AI assistant -->
+    <section class="ai" id="aiPanel">
+      <div class="ai-head">
+        <h3 data-i="ai.title"></h3>
+        <p class="ai-disc" data-i="ai.disclaimer"></p>
+      </div>
+      <div class="ai-log" id="aiLog"></div>
+      <div class="ai-chips" id="aiChips"></div>
+      <div class="ai-input">
+        <textarea id="aiText" rows="1" data-i-ph="ai.placeholder"></textarea>
+        <button id="aiSend" data-i="ai.send"></button>
+      </div>
+    </section>
+
     <button class="reset" id="resetBtn" data-i="results.reset"></button>
   </div>
 </main>
@@ -269,7 +326,27 @@ const I18N = {
     "onb.howTitle": "How to use it",
     "onb.gotIt": "Got it — let's start",
     "err.noXml": "Couldn't find export.xml inside that file. Please choose your Apple Health export.zip or export.xml.",
-    "err.generic": "Something went wrong while reading the file. Please make sure it's a valid Apple Health export."
+    "err.generic": "Something went wrong while reading the file. Please make sure it's a valid Apple Health export.",
+    "ins.steps": "You average about {avg} steps a day. Your most active day was {day} with {max} steps. Your latest 30-day average is {recent} steps — {pct}% versus your all-time average.",
+    "ins.dist": "You've covered {total} km in total, roughly {avgmo} km per month. Your biggest month was {month} with {max} km.",
+    "ins.rhr": "Your resting heart rate averages {avg} bpm. Recently it's {dir}: {recent} bpm now versus {earlier} bpm earlier. A lower resting rate generally points to better cardiovascular fitness.",
+    "ins.hrv": "Your heart rate variability (SDNN) averages {avg} ms. Recently it's {dir}: {recent} ms now versus {earlier} ms earlier. Higher HRV usually reflects better recovery and lower stress.",
+    "ins.sleep": "You sleep about {avg} hours a night. On {pct}% of recorded nights you got 7 or more hours.",
+    "ins.wo": "You've logged {total} workouts, about {avgmo} a month. Your most active month was {month} with {max} workouts.",
+    "ins.up": "trending up",
+    "ins.down": "trending down",
+    "ins.flat": "holding steady",
+    "ai.title": "AI Health Assistant",
+    "ai.disclaimer": "AI-generated from your summary statistics. Educational only — not medical advice.",
+    "ai.placeholder": "Ask about your steps, sleep, heart rate…",
+    "ai.send": "Send",
+    "ai.sending": "Thinking…",
+    "ai.welcome": "Hi! I can read a summary of your health data above. Ask me anything, or tap a suggestion below.",
+    "ai.error": "Sorry, I couldn't reach the assistant right now. Please try again.",
+    "ai.q1": "How's my activity overall?",
+    "ai.q2": "Is my resting heart rate healthy?",
+    "ai.q3": "How can I improve my sleep?",
+    "ai.q4": "What trends stand out?"
   },
   zh: {
     "app.title": "回声健康",
@@ -324,7 +401,27 @@ const I18N = {
     "onb.howTitle": "如何使用",
     "onb.gotIt": "明白了，开始使用",
     "err.noXml": "在该文件中找不到 export.xml。请选择你的 Apple 健康 export.zip 或 export.xml。",
-    "err.generic": "读取文件时出错。请确认这是有效的 Apple 健康导出文件。"
+    "err.generic": "读取文件时出错。请确认这是有效的 Apple 健康导出文件。",
+    "ins.steps": "你平均每天约 {avg} 步。最活跃的一天是 {day}，共 {max} 步。最近 30 天的平均为 {recent} 步，相比历史平均 {pct}%。",
+    "ins.dist": "你累计走了 {total} 公里，平均每月约 {avgmo} 公里。距离最多的月份是 {month}，达 {max} 公里。",
+    "ins.rhr": "你的静息心率平均为 {avg} 次/分。最近{dir}：当前 {recent} 次/分，此前为 {earlier} 次/分。静息心率较低通常意味着心肺功能更好。",
+    "ins.hrv": "你的心率变异性（SDNN）平均为 {avg} 毫秒。最近{dir}：当前 {recent} 毫秒，此前为 {earlier} 毫秒。HRV 越高通常代表恢复越好、压力越低。",
+    "ins.sleep": "你平均每晚睡约 {avg} 小时。在 {pct}% 的有记录夜晚里睡满了 7 小时及以上。",
+    "ins.wo": "你共记录了 {total} 次训练，平均每月约 {avgmo} 次。训练最多的月份是 {month}，达 {max} 次。",
+    "ins.up": "呈上升趋势",
+    "ins.down": "呈下降趋势",
+    "ins.flat": "基本持平",
+    "ai.title": "AI 健康助手",
+    "ai.disclaimer": "由 AI 根据你的汇总统计生成，仅供参考，不构成医疗建议。",
+    "ai.placeholder": "问问你的步数、睡眠、心率……",
+    "ai.send": "发送",
+    "ai.sending": "思考中……",
+    "ai.welcome": "你好！我可以读取上方你的健康数据汇总。有什么想问的，或点击下方的建议问题。",
+    "ai.error": "抱歉，暂时无法连接助手，请稍后再试。",
+    "ai.q1": "我的整体活动情况怎么样？",
+    "ai.q2": "我的静息心率健康吗？",
+    "ai.q3": "我该怎么改善睡眠？",
+    "ai.q4": "有哪些明显的趋势？"
   }
 };
 
@@ -359,6 +456,9 @@ function applyLang(){
   document.querySelectorAll("[data-i]").forEach(el=>{
     el.innerHTML = t(el.getAttribute("data-i"));
   });
+  document.querySelectorAll("[data-i-ph]").forEach(el=>{
+    el.setAttribute("placeholder", t(el.getAttribute("data-i-ph")));
+  });
   // tutorial steps
   const list = document.getElementById("stepsList");
   list.innerHTML = "";
@@ -373,6 +473,7 @@ function applyLang(){
   });
   // re-render results if we already have data
   if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderCharts(LAST_RESULT); }
+  renderAiStatic();
 }
 
 document.querySelectorAll(".lang button").forEach(b=>{
@@ -592,9 +693,9 @@ async function handleFile(file){
     py.globals.delete("FILE_BYTES");
 
     LAST_RESULT = JSON.parse(jsonStr);
+    showStage("results");
     renderKPIs(LAST_RESULT);
     renderCharts(LAST_RESULT);
-    showStage("results");
   }catch(err){
     console.error(err);
     const msg = String(err && err.message || err).includes("NO_XML") ? t("err.noXml") : t("err.generic");
@@ -646,19 +747,36 @@ function baseLayout(yTitle){
 }
 const PLOT_CFG = {displayModeBar:false, responsive:true};
 
-function card(id, titleKey, subKey){
-  return `<div class="card"><h3>${t(titleKey)}</h3><p class="csub">${t(subKey)}</p><div id="${id}"></div></div>`;
+function card(id, titleKey, subKey, insightId){
+  return `<div class="card"><h3>${t(titleKey)}</h3><p class="csub">${t(subKey)}</p><div class="plotwrap" id="${id}"></div><p class="insight" id="${insightId}"></p></div>`;
+}
+
+/* --- per-chart interpretation ------------------------------------- */
+function _mean(a){ return a.length ? a.reduce((x,y)=>x+y,0)/a.length : 0; }
+function tf(key, vars){
+  let s = t(key);
+  for (const k in vars){ s = s.split("{"+k+"}").join(vars[k]); }
+  return s;
+}
+function _trendDir(recent, earlier){
+  const d = recent - earlier;
+  const thr = Math.max(1, Math.abs(earlier) * 0.02);
+  return d > thr ? "ins.up" : (d < -thr ? "ins.down" : "ins.flat");
+}
+function fillInsight(id, text){
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
 }
 
 function renderCharts(r){
   const grid = document.getElementById("chartGrid");
   const blocks = [];
-  if (r.steps_daily.x.length) blocks.push(card("c_steps","chart.steps.title","chart.steps.sub"));
-  if (r.monthly_distance.x.length) blocks.push(card("c_dist","chart.dist.title","chart.dist.sub"));
-  if (r.resting_hr.x.length) blocks.push(card("c_rhr","chart.rhr.title","chart.rhr.sub"));
-  if (r.hrv.x.length) blocks.push(card("c_hrv","chart.hrv.title","chart.hrv.sub"));
-  if (r.sleep.x.length) blocks.push(card("c_sleep","chart.sleep.title","chart.sleep.sub"));
-  if (r.workouts_month.x.length) blocks.push(card("c_wo","chart.workouts.title","chart.workouts.sub"));
+  if (r.steps_daily.x.length) blocks.push(card("c_steps","chart.steps.title","chart.steps.sub","i_steps"));
+  if (r.monthly_distance.x.length) blocks.push(card("c_dist","chart.dist.title","chart.dist.sub","i_dist"));
+  if (r.resting_hr.x.length) blocks.push(card("c_rhr","chart.rhr.title","chart.rhr.sub","i_rhr"));
+  if (r.hrv.x.length) blocks.push(card("c_hrv","chart.hrv.title","chart.hrv.sub","i_hrv"));
+  if (r.sleep.x.length) blocks.push(card("c_sleep","chart.sleep.title","chart.sleep.sub","i_sleep"));
+  if (r.workouts_month.x.length) blocks.push(card("c_wo","chart.workouts.title","chart.workouts.sub","i_wo"));
   grid.innerHTML = blocks.join("");
 
   if (r.steps_daily.x.length){
@@ -668,38 +786,174 @@ function renderCharts(r){
       {type:"scatter", mode:"lines", x:r.steps_daily.x, y:r.steps_daily.roll, name:t("chart.steps.line"),
        line:{color:COL.accent, width:2.5}, hovertemplate:"%{x}<br>%{y:,.0f}<extra></extra>"}
     ], baseLayout(t("axis.steps")), PLOT_CFG);
+    const sy = r.steps_daily.y;
+    const avg = Math.round(_mean(sy));
+    const mx = Math.max(...sy), md = r.steps_daily.x[sy.indexOf(mx)];
+    const roll = r.steps_daily.roll, recent = Math.round(roll[roll.length-1]);
+    const pct = avg ? Math.round((recent - avg) / avg * 100) : 0;
+    fillInsight("i_steps", tf("ins.steps", {avg:fmtInt(avg), day:md, max:fmtInt(mx),
+      recent:fmtInt(recent), pct:(pct>=0?"+":"")+pct}));
   }
   if (r.monthly_distance.x.length){
     Plotly.newPlot("c_dist", [
       {type:"bar", x:r.monthly_distance.x, y:r.monthly_distance.y,
        marker:{color:COL.blue}, hovertemplate:"%{x}<br>%{y:.1f} "+t("kpi.km")+"<extra></extra>"}
     ], baseLayout(t("axis.distance")), PLOT_CFG);
+    const dy = r.monthly_distance.y;
+    const mmax = Math.max(...dy), mmonth = r.monthly_distance.x[dy.indexOf(mmax)];
+    fillInsight("i_dist", tf("ins.dist", {total:fmtInt(Math.round(r.meta.total_distance)),
+      avgmo:fmtInt(Math.round(_mean(dy))), month:mmonth, max:fmtInt(Math.round(mmax))}));
   }
   if (r.resting_hr.x.length){
     Plotly.newPlot("c_rhr", [
       {type:"scatter", mode:"lines", x:r.resting_hr.x, y:r.resting_hr.y,
        line:{color:COL.accent, width:2}, hovertemplate:"%{x}<br>%{y:.0f} "+t("kpi.bpm")+"<extra></extra>"}
     ], baseLayout(t("axis.bpm")), PLOT_CFG);
+    const ry = r.resting_hr.y, n = ry.length, k = Math.max(1, Math.min(90, Math.floor(n/2)));
+    const recent = Math.round(_mean(ry.slice(n-k)));
+    const earlier = n-k > 0 ? Math.round(_mean(ry.slice(0, n-k))) : recent;
+    fillInsight("i_rhr", tf("ins.rhr", {avg:fmtInt(Math.round(_mean(ry))),
+      dir:t(_trendDir(recent, earlier)), recent:fmtInt(recent), earlier:fmtInt(earlier)}));
   }
   if (r.hrv.x.length){
     Plotly.newPlot("c_hrv", [
       {type:"scatter", mode:"lines", x:r.hrv.x, y:r.hrv.y,
        line:{color:COL.purple, width:2}, hovertemplate:"%{x}<br>%{y:.1f} ms<extra></extra>"}
     ], baseLayout(t("axis.ms")), PLOT_CFG);
+    const hy = r.hrv.y, n = hy.length, k = Math.max(1, Math.min(90, Math.floor(n/2)));
+    const recent = _mean(hy.slice(n-k));
+    const earlier = n-k > 0 ? _mean(hy.slice(0, n-k)) : recent;
+    fillInsight("i_hrv", tf("ins.hrv", {avg:_mean(hy).toFixed(1),
+      dir:t(_trendDir(recent, earlier)), recent:recent.toFixed(1), earlier:earlier.toFixed(1)}));
   }
   if (r.sleep.x.length){
     Plotly.newPlot("c_sleep", [
       {type:"bar", x:r.sleep.x, y:r.sleep.y,
        marker:{color:COL.green}, hovertemplate:"%{x}<br>%{y:.1f} "+t("axis.hours")+"<extra></extra>"}
     ], baseLayout(t("axis.hours")), PLOT_CFG);
+    const sl = r.sleep.y;
+    const pct = sl.length ? Math.round(sl.filter(v=>v>=7).length / sl.length * 100) : 0;
+    fillInsight("i_sleep", tf("ins.sleep", {avg:_mean(sl).toFixed(1), pct:pct}));
   }
   if (r.workouts_month.x.length){
     Plotly.newPlot("c_wo", [
       {type:"bar", x:r.workouts_month.x, y:r.workouts_month.y,
        marker:{color:COL.orange}, hovertemplate:"%{x}<br>%{y}<extra></extra>"}
     ], baseLayout(t("axis.count")), PLOT_CFG);
+    const wy = r.workouts_month.y;
+    const wmax = Math.max(...wy), wmonth = r.workouts_month.x[wy.indexOf(wmax)];
+    fillInsight("i_wo", tf("ins.wo", {total:fmtInt(r.meta.workouts),
+      avgmo:fmtInt(Math.round(_mean(wy))), month:wmonth, max:fmtInt(wmax)}));
   }
 }
+
+/* =====================================================================
+   AI assistant
+   ===================================================================== */
+const AI_HISTORY = [];   // {role:"user"|"model", text}
+let AI_BUSY = false;
+
+function buildHealthSummary(){
+  if (!LAST_RESULT) return "";
+  const m = LAST_RESULT.meta, lines = [];
+  lines.push("Date range: " + (m.date_min||"?") + " to " + (m.date_max||"?"));
+  if (m.records!=null) lines.push("Total health records: " + m.records);
+  if (m.total_steps!=null) lines.push("Total steps: " + m.total_steps);
+  if (m.total_distance!=null) lines.push("Total walking+running distance: " + Math.round(m.total_distance) + " km");
+  if (m.active_days!=null) lines.push("Active days: " + m.active_days);
+  if (m.workouts!=null) lines.push("Workouts logged: " + m.workouts);
+  if (m.avg_resting_hr!=null) lines.push("Average resting heart rate: " + m.avg_resting_hr + " bpm");
+  // attach the already-computed per-chart interpretations
+  ["i_steps","i_dist","i_rhr","i_hrv","i_sleep","i_wo"].forEach(id=>{
+    const el = document.getElementById(id);
+    if (el && el.textContent.trim()) lines.push(el.textContent.trim());
+  });
+  return lines.join("\n");
+}
+
+function aiAppend(role, text, isErr){
+  const log = document.getElementById("aiLog");
+  const div = document.createElement("div");
+  div.className = "ai-msg " + (role==="user" ? "user" : "bot") + (isErr ? " err" : "");
+  div.textContent = text;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+
+function renderAiStatic(){
+  const log = document.getElementById("aiLog");
+  const chips = document.getElementById("aiChips");
+  // only seed the welcome line if the conversation hasn't started
+  if (AI_HISTORY.length === 0){
+    log.innerHTML = "";
+    aiAppend("bot", t("ai.welcome"));
+  }
+  chips.innerHTML = "";
+  ["ai.q1","ai.q2","ai.q3","ai.q4"].forEach(k=>{
+    const b = document.createElement("button");
+    b.className = "ai-chip";
+    b.textContent = t(k);
+    b.addEventListener("click", ()=>{ if(!AI_BUSY) sendAi(t(k)); });
+    chips.appendChild(b);
+  });
+}
+
+async function sendAi(question){
+  question = (question||"").trim();
+  if (!question || AI_BUSY || !LAST_RESULT) return;
+  AI_BUSY = true;
+  const sendBtn = document.getElementById("aiSend");
+  const txt = document.getElementById("aiText");
+  sendBtn.disabled = true;
+  txt.value = "";
+  txt.style.height = "auto";
+
+  aiAppend("user", question);
+  const thinking = aiAppend("bot", t("ai.sending"));
+
+  try{
+    const resp = await fetch("/api/chat", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        question,
+        summary: buildHealthSummary(),
+        history: AI_HISTORY.slice(-8),
+        lang: LANG,
+      }),
+    });
+    const data = await resp.json().catch(()=>({}));
+    if (!resp.ok || !data.reply){
+      thinking.classList.add("err");
+      thinking.textContent = t("ai.error");
+    } else {
+      thinking.textContent = data.reply;
+      AI_HISTORY.push({role:"user", text:question});
+      AI_HISTORY.push({role:"model", text:data.reply});
+    }
+  } catch(e){
+    thinking.classList.add("err");
+    thinking.textContent = t("ai.error");
+  } finally {
+    AI_BUSY = false;
+    sendBtn.disabled = false;
+    document.getElementById("aiLog").scrollTop = 1e9;
+  }
+}
+
+(function initAi(){
+  const txt = document.getElementById("aiText");
+  const sendBtn = document.getElementById("aiSend");
+  sendBtn.addEventListener("click", ()=> sendAi(txt.value));
+  txt.addEventListener("keydown", (e)=>{
+    if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); sendAi(txt.value); }
+  });
+  txt.addEventListener("input", ()=>{
+    txt.style.height = "auto";
+    txt.style.height = Math.min(140, txt.scrollHeight) + "px";
+  });
+})();
 
 /* =====================================================================
    init
