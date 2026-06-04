@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>EchoHealth · 回声健康</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-<script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <style>
   :root{
     --accent:#fa3c4c; --blue:#2e7fff; --green:#34c759; --purple:#8a5cf6; --orange:#ff9f0a;
@@ -502,170 +502,211 @@ document.getElementById("howBtn").addEventListener("click", openModal);
 overlay.addEventListener("click", e=>{ if(e.target===overlay) closeModal(); });
 
 /* =====================================================================
-   embedded Python parser (runs in Pyodide)
-   ===================================================================== */
-const PY_CODE = `
-import json, io, zipfile
-import xml.etree.ElementTree as ET
-from collections import defaultdict, deque
-from datetime import datetime
+   pure-JavaScript streaming parser
 
-SUM_TYPES = {
-    "HKQuantityTypeIdentifierStepCount": "steps",
-    "HKQuantityTypeIdentifierDistanceWalkingRunning": "distance",
-    "HKQuantityTypeIdentifierActiveEnergyBurned": "energy",
+   Replaces the former Pyodide/Python pipeline. The export can be hundreds
+   of MB (a multi-year iPhone export is ~800MB), which made iOS Safari run
+   out of memory while booting the Python WASM runtime and copying the whole
+   file into it. This parser streams the file in ~1MB chunks, scans complete
+   <Record>/<Workout> opening tags, aggregates, and discards processed text,
+   so peak memory stays tiny regardless of file size. .zip exports are
+   decompressed on the fly with fflate's streaming Unzip.
+   ===================================================================== */
+const SUM_TYPES = {
+  "HKQuantityTypeIdentifierStepCount": "steps",
+  "HKQuantityTypeIdentifierDistanceWalkingRunning": "distance",
+  "HKQuantityTypeIdentifierActiveEnergyBurned": "energy",
+};
+const RHR_TYPE = "HKQuantityTypeIdentifierRestingHeartRate";
+const HRV_TYPE = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN";
+const SLEEP_TYPE = "HKCategoryTypeIdentifierSleepAnalysis";
+
+// Matches an opening <Record ...> or <Workout ...> tag. The [\s/>] guard
+// after the name avoids matching siblings like <WorkoutEvent>/<WorkoutStatistics>.
+const TAG_RE = /<(?:Record|Workout)[\s/>][^>]*>/g;
+const RE_TYPE  = /\btype="([^"]*)"/;
+const RE_START = /\bstartDate="([^"]*)"/;
+const RE_END   = /\bendDate="([^"]*)"/;
+const RE_VALUE = /\bvalue="([^"]*)"/;
+function av(tag, re){ const m = re.exec(tag); return m ? m[1] : null; }
+
+// "YYYY-MM-DD HH:MM:SS ..." -> epoch ms, ignoring the timezone suffix.
+// Both start and end carry the same offset, so durations are correct.
+function naiveMs(s){
+  return Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10),
+                  +s.slice(11,13), +s.slice(14,16), +s.slice(17,19));
 }
-RHR = "HKQuantityTypeIdentifierRestingHeartRate"
-HRV = "HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
-SLEEP = "HKCategoryTypeIdentifierSleepAnalysis"
+function newAgg(){
+  return {
+    day_steps: new Map(), day_dist: new Map(),
+    rhr: new Map(), hrv: new Map(), sleep_night: new Map(),
+    workouts_month: new Map(), workout_total: 0, rec: 0,
+    dmin: null, dmax: null,
+  };
+}
+function pushList(map, k, v){ const a = map.get(k); if (a) a.push(v); else map.set(k, [v]); }
 
-def _source(data):
-    if data[:2] == b"PK":
-        zf = zipfile.ZipFile(io.BytesIO(data))
-        infos = zf.infolist()
-        # 1) exact basename export.xml (English exports)
-        name = None
-        for inf in infos:
-            if inf.filename.split("/")[-1].lower() == "export.xml":
-                name = inf.filename; break
-        # 2) any .xml that is not the CDA file (handles localized names,
-        #    e.g. Chinese exports use 导出.xml / 导出_cda.xml). Pick the
-        #    largest such file, since the main export dwarfs everything else.
-        if name is None:
-            cands = [inf for inf in infos
-                     if inf.filename.lower().endswith(".xml")
-                     and "cda" not in inf.filename.lower()]
-            if cands:
-                cands.sort(key=lambda i: i.file_size, reverse=True)
-                name = cands[0].filename
-        # 3) last resort: the single largest .xml of any kind
-        if name is None:
-            xmls = [inf for inf in infos if inf.filename.lower().endswith(".xml")]
-            if xmls:
-                xmls.sort(key=lambda i: i.file_size, reverse=True)
-                name = xmls[0].filename
-        if name is None:
-            raise ValueError("NO_XML")
-        return zf.open(name)
-    return io.BytesIO(data)
-
-def process(js_bytes):
-    try:
-        data = js_bytes.to_py().tobytes()
-    except Exception:
-        data = bytes(js_bytes)
-    src = _source(data)
-
-    day_steps = defaultdict(float)
-    day_dist = defaultdict(float)
-    rhr = defaultdict(list)
-    hrv = defaultdict(list)
-    sleep_night = defaultdict(float)
-    workouts_month = defaultdict(int)
-    workout_total = 0
-    rec = 0
-    dmin = dmax = None
-
-    for event, elem in ET.iterparse(src, events=("end",)):
-        tag = elem.tag
-        if tag == "Record":
-            rec += 1
-            rtype = elem.get("type")
-            start = elem.get("startDate")
-            day = start[:10] if start else None
-            if day:
-                if dmin is None or day < dmin: dmin = day
-                if dmax is None or day > dmax: dmax = day
-            if rtype in SUM_TYPES and day:
-                col = SUM_TYPES[rtype]
-                try: v = float(elem.get("value"))
-                except (TypeError, ValueError): v = 0.0
-                if col == "steps": day_steps[day] += v
-                elif col == "distance": day_dist[day] += v
-            elif rtype == RHR and day:
-                try: rhr[day].append(float(elem.get("value")))
-                except (TypeError, ValueError): pass
-            elif rtype == HRV and day:
-                try: hrv[day].append(float(elem.get("value")))
-                except (TypeError, ValueError): pass
-            elif rtype == SLEEP:
-                val = elem.get("value") or ""
-                if "Asleep" in val:
-                    s = elem.get("startDate"); e = elem.get("endDate")
-                    if s and e:
-                        try:
-                            ds = datetime.strptime(s[:19], "%Y-%m-%d %H:%M:%S")
-                            de = datetime.strptime(e[:19], "%Y-%m-%d %H:%M:%S")
-                            hrs = (de - ds).total_seconds() / 3600.0
-                            if 0 < hrs < 24:
-                                sleep_night[e[:10]] += hrs
-                        except ValueError:
-                            pass
-        elif tag == "Workout":
-            start = elem.get("startDate")
-            if start:
-                workouts_month[start[:7]] += 1
-                workout_total += 1
-        elem.clear()
-
-    sdays = sorted(day_steps.keys())
-    svals = [round(day_steps[d], 0) for d in sdays]
-    roll = []
-    win = deque(); s = 0.0
-    for v in svals:
-        win.append(v); s += v
-        if len(win) > 30:
-            s -= win.popleft()
-        roll.append(round(s / len(win), 0))
-
-    mdist = defaultdict(float)
-    for d, v in day_dist.items():
-        mdist[d[:7]] += v
-    md_x = sorted(mdist.keys())
-    md_y = [round(mdist[m], 1) for m in md_x]
-
-    rhr_x = sorted(rhr.keys())
-    rhr_y = [round(sum(rhr[d]) / len(rhr[d]), 0) for d in rhr_x]
-    hrv_x = sorted(hrv.keys())
-    hrv_y = [round(sum(hrv[d]) / len(hrv[d]), 1) for d in hrv_x]
-    sl_x = sorted(sleep_night.keys())
-    sl_y = [round(sleep_night[d], 2) for d in sl_x]
-    wm_x = sorted(workouts_month.keys())
-    wm_y = [workouts_month[m] for m in wm_x]
-
-    avg_rhr = round(sum(rhr_y) / len(rhr_y), 0) if rhr_y else None
-
-    return json.dumps({
-        "meta": {
-            "date_min": dmin, "date_max": dmax, "records": rec,
-            "total_steps": int(sum(day_steps.values())),
-            "total_distance": round(sum(day_dist.values()), 1),
-            "active_days": len(day_steps),
-            "workouts": workout_total,
-            "avg_resting_hr": avg_rhr,
-        },
-        "steps_daily": {"x": sdays, "y": svals, "roll": roll},
-        "monthly_distance": {"x": md_x, "y": md_y},
-        "resting_hr": {"x": rhr_x, "y": rhr_y},
-        "hrv": {"x": hrv_x, "y": hrv_y},
-        "sleep": {"x": sl_x, "y": sl_y},
-        "workouts_month": {"x": wm_x, "y": wm_y},
-    })
-`;
-
-/* =====================================================================
-   Pyodide boot (lazy)
-   ===================================================================== */
-let pyodideReady = null;
-async function getPyodide(){
-  if (!pyodideReady){
-    pyodideReady = (async ()=>{
-      const py = await loadPyodide();
-      py.runPython(PY_CODE);
-      return py;
-    })();
+function handleTag(A, tag){
+  if (tag.charCodeAt(1) === 87 /* 'W' -> Workout */){
+    const start = av(tag, RE_START);
+    if (start){
+      const mo = start.slice(0,7);
+      A.workouts_month.set(mo, (A.workouts_month.get(mo) || 0) + 1);
+      A.workout_total++;
+    }
+    return;
   }
-  return pyodideReady;
+  A.rec++;
+  const rtype = av(tag, RE_TYPE);
+  const start = av(tag, RE_START);
+  const day = start ? start.slice(0,10) : null;
+  if (day){
+    if (A.dmin === null || day < A.dmin) A.dmin = day;
+    if (A.dmax === null || day > A.dmax) A.dmax = day;
+  }
+  const col = SUM_TYPES[rtype];
+  if (col && day){
+    const v = parseFloat(av(tag, RE_VALUE));
+    if (!isNaN(v)){
+      if (col === "steps") A.day_steps.set(day, (A.day_steps.get(day) || 0) + v);
+      else if (col === "distance") A.day_dist.set(day, (A.day_dist.get(day) || 0) + v);
+    }
+  } else if (rtype === RHR_TYPE && day){
+    const v = parseFloat(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.rhr, day, v);
+  } else if (rtype === HRV_TYPE && day){
+    const v = parseFloat(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.hrv, day, v);
+  } else if (rtype === SLEEP_TYPE){
+    const val = av(tag, RE_VALUE) || "";
+    if (val.indexOf("Asleep") !== -1){
+      const s = av(tag, RE_START), e = av(tag, RE_END);
+      if (s && e){
+        const hrs = (naiveMs(e) - naiveMs(s)) / 3600000;
+        if (hrs > 0 && hrs < 24){
+          const night = e.slice(0,10);
+          A.sleep_night.set(night, (A.sleep_night.get(night) || 0) + hrs);
+        }
+      }
+    }
+  }
+}
+
+function finalize(A){
+  const sdays = [...A.day_steps.keys()].sort();
+  const svals = sdays.map(d => Math.round(A.day_steps.get(d)));
+  const roll = []; const win = []; let s = 0;
+  for (const v of svals){
+    win.push(v); s += v;
+    if (win.length > 30) s -= win.shift();
+    roll.push(Math.round(s / win.length));
+  }
+  const mdist = new Map();
+  for (const [d, v] of A.day_dist){ const m = d.slice(0,7); mdist.set(m, (mdist.get(m) || 0) + v); }
+  const md_x = [...mdist.keys()].sort();
+  const md_y = md_x.map(m => Math.round(mdist.get(m) * 10) / 10);
+
+  const avg = a => a.reduce((p,c)=>p+c,0) / a.length;
+  const rhr_x = [...A.rhr.keys()].sort();
+  const rhr_y = rhr_x.map(d => Math.round(avg(A.rhr.get(d))));
+  const hrv_x = [...A.hrv.keys()].sort();
+  const hrv_y = hrv_x.map(d => Math.round(avg(A.hrv.get(d)) * 10) / 10);
+  const sl_x = [...A.sleep_night.keys()].sort();
+  const sl_y = sl_x.map(d => Math.round(A.sleep_night.get(d) * 100) / 100);
+  const wm_x = [...A.workouts_month.keys()].sort();
+  const wm_y = wm_x.map(m => A.workouts_month.get(m));
+
+  let totalSteps = 0; for (const v of A.day_steps.values()) totalSteps += v;
+  let totalDist = 0;  for (const v of A.day_dist.values())  totalDist += v;
+  const avg_rhr = rhr_y.length ? Math.round(avg(rhr_y)) : null;
+
+  return {
+    meta: {
+      date_min: A.dmin, date_max: A.dmax, records: A.rec,
+      total_steps: Math.round(totalSteps),
+      total_distance: Math.round(totalDist * 10) / 10,
+      active_days: A.day_steps.size,
+      workouts: A.workout_total,
+      avg_resting_hr: avg_rhr,
+    },
+    steps_daily: { x: sdays, y: svals, roll },
+    monthly_distance: { x: md_x, y: md_y },
+    resting_hr: { x: rhr_x, y: rhr_y },
+    hrv: { x: hrv_x, y: hrv_y },
+    sleep: { x: sl_x, y: sl_y },
+    workouts_month: { x: wm_x, y: wm_y },
+  };
+}
+
+// Stream a File (raw export.xml or export.zip) and aggregate it.
+// onProgress(fraction 0..1) is called as bytes are read.
+async function parseHealthExport(file, onProgress){
+  const sig = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+  const isZip = sig[0] === 0x50 && sig[1] === 0x4B; // "PK"
+  const A = newAgg();
+  const td = new TextDecoder("utf-8");
+  let buf = "";
+
+  // Feed decoded text; scan complete tags; keep only the trailing partial.
+  function feed(text, last){
+    buf += text;
+    if (!last){
+      const lastGt = buf.lastIndexOf(">");
+      if (lastGt < 0) return;
+      const head = buf.slice(0, lastGt + 1);
+      buf = buf.slice(lastGt + 1);
+      TAG_RE.lastIndex = 0; let m;
+      while ((m = TAG_RE.exec(head)) !== null) handleTag(A, m[0]);
+    } else {
+      TAG_RE.lastIndex = 0; let m;
+      while ((m = TAG_RE.exec(buf)) !== null) handleTag(A, m[0]);
+      buf = "";
+    }
+  }
+
+  const total = file.size || 0;
+  let read = 0;
+  const reader = file.stream().getReader();
+
+  if (isZip){
+    if (!window.fflate) throw new Error("FFLATE_MISSING");
+    const unzip = new fflate.Unzip();
+    unzip.register(fflate.UnzipInflate);
+    let picked = false, finished = false, perr = null;
+    unzip.onfile = (entry) => {
+      const lower = entry.name.toLowerCase();
+      // Pick the first .xml that is not the CDA file. The main export dwarfs
+      // everything else; this also matches localized names like 导出.xml.
+      const isXml = lower.endsWith(".xml") && lower.indexOf("cda") === -1;
+      if (isXml && !picked){
+        picked = true;
+        entry.ondata = (err, chunk, final) => {
+          if (err){ perr = err; return; }
+          feed(td.decode(chunk, { stream: !final }), final);
+          if (final) finished = true;
+        };
+        entry.start();
+      }
+    };
+    while (true){
+      const { value, done } = await reader.read();
+      if (done){ unzip.push(new Uint8Array(0), true); break; }
+      read += value.byteLength;
+      unzip.push(value, false);
+      if (perr) throw perr;
+      if (onProgress && total) onProgress(read / total);
+    }
+    if (perr) throw perr;
+    if (!picked) throw new Error("NO_XML");
+    if (!finished) feed("", true);
+  } else {
+    while (true){
+      const { value, done } = await reader.read();
+      if (done){ feed("", true); break; }
+      read += value.byteLength;
+      feed(td.decode(value, { stream: true }), false);
+      if (onProgress && total) onProgress(read / total);
+    }
+  }
+  return finalize(A);
 }
 
 /* =====================================================================
@@ -701,16 +742,17 @@ drop.addEventListener("drop", e=>{
 async function handleFile(file){
   try{
     showStage("loading");
-    setLoading("load.boot","load.bootSmall");
-    const py = await getPyodide();
-
     setLoading("load.parse","load.parseSmall");
-    const buf = await file.arrayBuffer();
-    py.globals.set("FILE_BYTES", new Uint8Array(buf));
-    const jsonStr = await py.runPythonAsync("process(FILE_BYTES)");
-    py.globals.delete("FILE_BYTES");
-
-    LAST_RESULT = JSON.parse(jsonStr);
+    const smallEl = document.getElementById("loadSmall");
+    const baseSmall = t("load.parseSmall");
+    let lastShown = -1;
+    LAST_RESULT = await parseHealthExport(file, frac=>{
+      const pct = Math.min(99, Math.round(frac * 100));
+      if (pct !== lastShown){
+        lastShown = pct;
+        smallEl.textContent = baseSmall + "  " + pct + "%";
+      }
+    });
     showStage("results");
     renderKPIs(LAST_RESULT);
     renderCharts(LAST_RESULT);
