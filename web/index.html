@@ -3,8 +3,13 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#f5f5f7" />
 <title>EchoHealth · 回声健康</title>
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<link rel="preconnect" href="https://cdn.plot.ly" crossorigin />
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+<link rel="dns-prefetch" href="https://generativelanguage.googleapis.com" />
+<!-- Plotly is loaded on demand (only once a file is parsed) to keep the
+     initial page weight tiny — see loadPlotly() below. -->
 <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <style>
   :root{
@@ -19,6 +24,17 @@
     background:var(--parchment); color:var(--ink);
     -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
     line-height:1.5; overflow-x:hidden;
+  }
+  /* prevent the 300ms tap delay and intentional tap highlight on touch */
+  button,a,select,.drop,.ai-chip{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  /* visible keyboard focus for every interactive control */
+  a:focus-visible,button:focus-visible,select:focus-visible,textarea:focus-visible,
+  [tabindex]:focus-visible{
+    outline:2px solid var(--blue);outline-offset:2px;border-radius:8px;
+  }
+  /* respect users who prefer less motion */
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
   }
   .wrap{max-width:1200px;margin:0 auto;padding:0 28px}
 
@@ -67,6 +83,19 @@
   .drop .formats{margin-top:16px;font-size:12.5px;color:var(--muted)}
   input[type=file]{display:none}
 
+  /* ---- error banner ---- */
+  .errbar{
+    display:flex;align-items:flex-start;gap:12px;
+    background:#fff4f4;border:1px solid rgba(250,60,76,.35);border-radius:14px;
+    padding:13px 14px 13px 16px;margin-bottom:20px;
+  }
+  .errbar-msg{flex:1;min-width:0;font-size:14px;line-height:1.5;color:var(--ink);word-wrap:break-word}
+  .errbar-x{
+    flex-shrink:0;background:none;border:none;color:var(--muted);font-size:20px;line-height:1;
+    cursor:pointer;padding:0 4px;font-family:inherit;border-radius:6px;
+  }
+  .errbar-x:hover{color:var(--ink)}
+
   /* ---- loading ---- */
   .loading{display:none;text-align:center;padding:60px 0}
   .loading.show{display:block}
@@ -84,7 +113,7 @@
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:30px 0 8px}
   .kpi{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:18px 18px 16px}
   .kpi-lab{font-size:12.5px;color:var(--muted);font-weight:500}
-  .kpi-val{font-size:26px;font-weight:600;letter-spacing:-.4px;margin-top:6px}
+  .kpi-val{font-size:26px;font-weight:600;letter-spacing:-.4px;margin-top:6px;font-variant-numeric:tabular-nums}
   .kpi-sub{font-size:12px;color:var(--muted);margin-top:2px}
 
   section.charts{padding:18px 0 10px}
@@ -105,7 +134,7 @@
   .map-head .map-titles h3{margin:0 0 2px;font-size:17px;font-weight:600;letter-spacing:-.2px}
   .map-head .map-titles p{margin:0;font-size:13px;color:var(--muted)}
   #routePick{
-    font-family:inherit;font-size:13px;color:var(--ink);background:var(--bg);
+    font-family:inherit;font-size:13px;color:var(--ink);background-color:var(--canvas);
     border:1px solid var(--hairline);border-radius:9999px;padding:8px 14px;cursor:pointer;max-width:260px;
   }
   #routeMap{width:100%;height:420px;border-radius:14px;overflow:hidden;background:#eef1f4}
@@ -129,7 +158,7 @@
   .ai-head h3{margin:0;font-size:17px;font-weight:600;letter-spacing:-.3px;color:var(--ink)}
   .ai-disc{margin:4px 0 0;font-size:12px;color:var(--muted)}
   .ai-log{
-    margin:16px 0 0;max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;
+    margin:16px 0 0;max-height:380px;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:10px;
   }
   .ai-msg{font-size:14px;line-height:1.6;padding:10px 13px;border-radius:14px;max-width:88%;white-space:pre-wrap;word-wrap:break-word}
   .ai-msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
@@ -173,7 +202,7 @@
   .overlay.show{display:flex}
   .modal{
     background:var(--canvas);border-radius:20px;max-width:560px;width:100%;
-    max-height:88vh;overflow:auto;padding:34px 34px 28px;border:1px solid var(--hairline);
+    max-height:88vh;overflow:auto;overscroll-behavior:contain;padding:34px 34px 28px;border:1px solid var(--hairline);
   }
   .modal h2{margin:0 0 4px;font-size:24px;font-weight:600;letter-spacing:-.4px}
   .modal .lede{margin:0 0 22px;color:var(--muted);font-size:15px}
@@ -211,9 +240,9 @@
 
 <!-- ===== onboarding / how-it-works modal ===== -->
 <div class="overlay" id="overlay">
-  <div class="modal">
-    <span class="badge"><span class="dot"></span><span data-i="onb.badge"></span></span>
-    <h2 data-i="onb.title"></h2>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="onbTitle">
+    <span class="badge"><span class="dot" aria-hidden="true"></span><span data-i="onb.badge"></span></span>
+    <h2 id="onbTitle" data-i="onb.title"></h2>
     <p class="lede" data-i="onb.lede"></p>
 
     <div class="block-title" data-i="onb.privacyTitle"></div>
@@ -234,9 +263,9 @@
     </div>
     <div class="head-actions">
       <button class="howlink" id="howBtn" data-i="nav.how"></button>
-      <div class="lang">
-        <button data-lang="en">EN</button>
-        <button data-lang="zh">中文</button>
+      <div class="lang" role="group" aria-label="Language">
+        <button data-lang="en" translate="no">EN</button>
+        <button data-lang="zh" translate="no">中文</button>
       </div>
     </div>
   </div>
@@ -247,6 +276,12 @@
 </div>
 
 <main class="wrap stage">
+  <!-- error banner -->
+  <div class="errbar" id="errBar" role="alert" aria-live="assertive" style="display:none">
+    <span class="errbar-msg" id="errMsg"></span>
+    <button class="errbar-x" id="errClose" aria-label="Dismiss">×</button>
+  </div>
+
   <!-- dropzone -->
   <div class="drop" id="drop">
     <h2 data-i="drop.title"></h2>
@@ -257,8 +292,8 @@
   </div>
 
   <!-- loading -->
-  <div class="loading" id="loading">
-    <div class="spinner"></div>
+  <div class="loading" id="loading" role="status" aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
     <p class="big" id="loadBig"></p>
     <p id="loadSmall"></p>
   </div>
@@ -521,7 +556,9 @@ function applyLang(){
   });
   // active language button
   document.querySelectorAll(".lang button").forEach(b=>{
-    b.classList.toggle("active", b.getAttribute("data-lang") === LANG);
+    const on = b.getAttribute("data-lang") === LANG;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
   });
   // re-render results if we already have data
   if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderCharts(LAST_RESULT); refreshRouteText(); }
@@ -540,13 +577,25 @@ document.querySelectorAll(".lang button").forEach(b=>{
    onboarding modal
    ===================================================================== */
 const overlay = document.getElementById("overlay");
-function openModal(){ overlay.classList.add("show"); }
-function closeModal(){ overlay.classList.remove("show"); }
+let _lastFocus = null;
+function openModal(){
+  _lastFocus = document.activeElement;
+  overlay.classList.add("show");
+  const btn = document.getElementById("gotitBtn");
+  if (btn) btn.focus();
+}
+function closeModal(){
+  overlay.classList.remove("show");
+  if (_lastFocus && _lastFocus.focus) _lastFocus.focus();
+}
 document.getElementById("gotitBtn").addEventListener("click", ()=>{
   localStorage.setItem("ah_onboarded","1"); closeModal();
 });
 document.getElementById("howBtn").addEventListener("click", openModal);
 overlay.addEventListener("click", e=>{ if(e.target===overlay) closeModal(); });
+document.addEventListener("keydown", e=>{
+  if (e.key === "Escape" && overlay.classList.contains("show")) closeModal();
+});
 
 /* =====================================================================
    pure-JavaScript streaming parser
@@ -861,6 +910,7 @@ drop.addEventListener("drop", e=>{
 
 async function handleFile(file){
   try{
+    hideError();
     showStage("loading");
     setLoading("load.parse","load.parseSmall");
     const smallEl = document.getElementById("loadSmall");
@@ -875,6 +925,7 @@ async function handleFile(file){
     });
     showStage("results");
     renderKPIs(LAST_RESULT);
+    await loadPlotly();
     renderCharts(LAST_RESULT);
     renderRoutes(LAST_RESULT);
   }catch(err){
@@ -889,12 +940,20 @@ async function handleFile(file){
       const frame = stack.split("\n").map(s=>s.trim()).filter(Boolean)
         .find(s => /@|index\.html|\.js/.test(s)) || "";
       const detail = (raw + (frame ? " | " + frame : "")).slice(0, 400);
-      msg = t("err.generic") + "\n\n[" + detail + "]";
+      msg = t("err.generic") + "  [" + detail + "]";
     }
-    alert(msg);
+    showError(msg);
     showStage("drop");
   }
 }
+
+function showError(msg){
+  const bar = document.getElementById("errBar");
+  document.getElementById("errMsg").textContent = msg;
+  bar.style.display = "";
+}
+function hideError(){ document.getElementById("errBar").style.display = "none"; }
+document.getElementById("errClose").addEventListener("click", hideError);
 
 document.getElementById("resetBtn").addEventListener("click", ()=>{
   fileInput.value = "";
@@ -962,6 +1021,7 @@ function fillInsight(id, text){
 }
 
 function renderCharts(r){
+  if (!window.Plotly) return;   // charts render once Plotly is loaded on demand
   const grid = document.getElementById("chartGrid");
   const blocks = [];
   if (r.steps_daily.x.length) blocks.push(card("c_steps","chart.steps.title","chart.steps.sub","i_steps"));
@@ -1049,6 +1109,22 @@ function renderCharts(r){
    only fetched the first time a file with routes is shown, so it never weighs
    on the initial page load.
    ===================================================================== */
+const PLOTLY_JS = "https://cdn.plot.ly/plotly-2.35.2.min.js";
+let _plotlyReady = null;
+function loadPlotly(){
+  if (window.Plotly) return Promise.resolve();
+  if (_plotlyReady) return _plotlyReady;
+  _plotlyReady = new Promise((resolve, reject)=>{
+    const js = document.createElement("script");
+    js.src = PLOTLY_JS;
+    js.charset = "utf-8";
+    js.onload = ()=>resolve();
+    js.onerror = ()=>reject(new Error("PLOTLY_LOAD"));
+    document.head.appendChild(js);
+  });
+  return _plotlyReady;
+}
+
 const LEAFLET_JS  = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js";
 const LEAFLET_CSS = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css";
 let _leafletReady = null;
