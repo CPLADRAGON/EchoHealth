@@ -354,6 +354,20 @@
   }
   .pv-save:hover{opacity:.88}
 
+  /* ---- recap carousel ---- */
+  .recap-body{position:relative;display:flex;align-items:center;justify-content:center}
+  #recapImg{display:block;width:auto;max-width:calc(100% - 96px);max-height:70vh;height:auto;border-radius:12px;box-shadow:0 1px 8px rgba(0,0,0,.18)}
+  .recap-nav{
+    position:absolute;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:9999px;
+    border:1px solid var(--hairline);background:var(--canvas);color:var(--ink);
+    font-size:26px;line-height:1;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;
+  }
+  .recap-nav:hover{border-color:var(--accent)}
+  .recap-nav:disabled{opacity:.35;cursor:default}
+  .recap-nav.prev{left:14px}
+  .recap-nav.next{right:14px}
+  .recap-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
   @media (max-width:560px){
     .wrap{padding:0 18px}
     header h1{font-size:26px}
@@ -393,6 +407,28 @@
     <div class="pv-foot">
       <span class="pv-hint" id="pvHint"></span>
       <button class="pv-save" id="pvSave"></button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== recap carousel modal ===== -->
+<div class="overlay" id="recapOverlay">
+  <div class="modal preview" role="dialog" aria-modal="true" aria-labelledby="recapTitle">
+    <div class="pv-head">
+      <h2 id="recapTitle" data-i="recap.title"></h2>
+      <button class="pv-x" id="recapClose" aria-label="Close">×</button>
+    </div>
+    <div class="pv-body recap-body" id="recapBody">
+      <button class="recap-nav prev" id="recapPrev" aria-label="Previous">‹</button>
+      <img id="recapImg" alt="Recap slide" />
+      <button class="recap-nav next" id="recapNext" aria-label="Next">›</button>
+    </div>
+    <div class="pv-foot">
+      <span class="pv-hint" id="recapHint"></span>
+      <span class="recap-actions">
+        <button class="exp-btn" id="recapSaveAll" data-i="recap.saveAll"></button>
+        <button class="pv-save" id="recapSave" data-i="recap.saveOne"></button>
+      </span>
     </div>
   </div>
 </div>
@@ -585,7 +621,7 @@ const I18N = {
     "report.savePdfAction": "Download PDF",
     "report.hintDesktop": "Preview your report, then download it.",
     "report.hintMobile": "Press and hold the image to save it to Photos, or tap Download.",
-    "card.save": "Share card",
+    "card.save": "Recap",
     "card.allTime": "All-time recap",
     "card.yearReview": "{year} in review",
     "card.totalSteps": "Total steps",
@@ -598,6 +634,14 @@ const I18N = {
     "card.steps": "steps",
     "card.longestRoute": "Longest route",
     "card.footer": "Made on-device with EchoHealth · nothing uploaded",
+    "recap.title": "Your recap",
+    "recap.saveOne": "Save slide",
+    "recap.saveAll": "Save all",
+    "recap.hint": "Slide {i} of {n} · swipe or use the arrows",
+    "recap.hintMobile": "Slide {i} of {n} · press and hold a slide to save it",
+    "recap.movement": "Your movement",
+    "recap.heartSleep": "Heart & sleep",
+    "recap.records": "Highlights",
     "kpi.dateRange": "Date range",
     "kpi.records": "Health records",
     "kpi.totalSteps": "Total steps",
@@ -756,7 +800,7 @@ const I18N = {
     "report.savePdfAction": "下载 PDF",
     "report.hintDesktop": "预览报告后再下载。",
     "report.hintMobile": "长按图片可保存到照片，或点击“下载”。",
-    "card.save": "分享卡片",
+    "card.save": "回顾",
     "card.allTime": "全时段回顾",
     "card.yearReview": "{year} 年度回顾",
     "card.totalSteps": "总步数",
@@ -769,6 +813,14 @@ const I18N = {
     "card.steps": "步数",
     "card.longestRoute": "最长路线",
     "card.footer": "由 EchoHealth 在本设备生成 · 不上传任何数据",
+    "recap.title": "你的回顾",
+    "recap.saveOne": "保存此页",
+    "recap.saveAll": "全部保存",
+    "recap.hint": "第 {i} / {n} 页 · 滑动或使用箭头",
+    "recap.hintMobile": "第 {i} / {n} 页 · 长按画面即可保存",
+    "recap.movement": "你的运动",
+    "recap.heartSleep": "心脏与睡眠",
+    "recap.records": "亮点",
     "kpi.dateRange": "数据日期范围",
     "kpi.records": "健康记录数",
     "kpi.totalSteps": "总步数",
@@ -2386,135 +2438,178 @@ function _cardPeriodTitle(r){
   return t("card.allTime");
 }
 
-function buildShareCard(){
-  const r = LAST_RESULT, m = r.meta;
-  const W = 1080, H = 1920, PAD = 90, CW = W - PAD*2;
-  const FAM = '-apple-system, "Segoe UI", Roboto, sans-serif';
-  const ink = "#1d1d1f", muted = "#6e6e73", accent = "#fa3c4c";
+/* --- animated recap: a few portrait story slides (1080×1920) --------------
+   Each slide is a standalone shareable image built from the period in view,
+   reusing the same canvas primitives as the share card. Shown in a tap-through
+   carousel; slides can be saved individually or all in sequence.
+   ------------------------------------------------------------------------- */
+const RECAP_W = 1080, RECAP_H = 1920, RECAP_PAD = 90;
+const RECAP_FAM = '-apple-system, "Segoe UI", Roboto, sans-serif';
+const RC_INK = "#1d1d1f", RC_MUTED = "#6e6e73", RC_ACCENT = "#fa3c4c";
 
+function _newSlide(){
   const cv = document.createElement("canvas");
-  cv.width = W; cv.height = H;
+  cv.width = RECAP_W; cv.height = RECAP_H;
   const ctx = cv.getContext("2d");
   ctx.textBaseline = "top";
-
-  // soft background
-  const bg = ctx.createLinearGradient(0,0,0,H);
+  const bg = ctx.createLinearGradient(0,0,0,RECAP_H);
   bg.addColorStop(0, "#fff6f6"); bg.addColorStop(0.5, "#ffffff"); bg.addColorStop(1, "#f5f5f7");
-  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
-
-  // header
-  let y = 150;
+  ctx.fillStyle = bg; ctx.fillRect(0,0,RECAP_W,RECAP_H);
+  return { cv, ctx };
+}
+function _slideHeader(ctx, title){
+  const PAD = RECAP_PAD, CW = RECAP_W - PAD*2;
+  let y = 140;
   ctx.textAlign = "left";
-  ctx.fillStyle = accent; ctx.font = "700 30px " + FAM;
+  ctx.fillStyle = RC_ACCENT; ctx.font = "700 30px " + RECAP_FAM;
   ctx.fillText("ECHOHEALTH", PAD, y); y += 46;
-  ctx.fillStyle = ink; ctx.font = "700 76px " + FAM;
-  ctx.fillText(_fit(ctx, _cardPeriodTitle(r), CW), PAD, y); y += 92;
-  ctx.fillStyle = muted; ctx.font = "34px " + FAM;
-  ctx.fillText((m.date_min||"") + "  →  " + (m.date_max||""), PAD, y); y += 70;
-
-  // hero: total steps, accent panel, with a rolling-steps sparkline beneath
-  const heroH = 340;
-  const hg = ctx.createLinearGradient(PAD, y, PAD+CW, y+heroH);
-  hg.addColorStop(0, "#fa3c4c"); hg.addColorStop(1, "#ff7a52");
-  _roundRect(ctx, PAD, y, CW, heroH, 28); ctx.fillStyle = hg; ctx.fill();
+  ctx.fillStyle = RC_INK; ctx.font = "700 70px " + RECAP_FAM;
+  ctx.fillText(_fit(ctx, title, CW), PAD, y); y += 86;
+  return y;
+}
+function _slideFooter(ctx, idx, total, r){
+  const PAD = RECAP_PAD;
   ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.font = "600 34px " + FAM;
-  ctx.fillText(t("card.totalSteps").toUpperCase(), W/2, y+44);
-  ctx.fillStyle = "#fff"; ctx.font = "700 128px " + FAM;
-  ctx.fillText(_fit(ctx, fmtInt(m.total_steps), CW-80), W/2, y+92);
-  // sparkline of the 30-day rolling step average (falls back to daily)
-  const spark = (r.steps_daily.roll && r.steps_daily.roll.length>1) ? r.steps_daily.roll : r.steps_daily.y;
-  _sparkline(ctx, spark, PAD+40, y+236, CW-80, 86,
-    "rgba(255,255,255,.95)", "rgba(255,255,255,.20)");
-  y += heroH + 36;
-
-  // 2×2 stat tiles
-  const tiles = [
-    [t("card.distance"), fmtInt(Math.round(m.total_distance)) + " " + t("kpi.km")],
-    [t("card.workouts"), fmtInt(m.workouts)],
-    [t("card.activeDays"), fmtInt(m.active_days)],
-    [t("card.restingHr"), (m.avg_resting_hr==null ? "—" : fmtInt(m.avg_resting_hr) + " " + t("kpi.bpm"))],
-  ];
-  const GAP = 30, tw = (CW - GAP)/2, th = 210;
+  ctx.fillStyle = RC_MUTED; ctx.font = "26px " + RECAP_FAM;
+  ctx.fillText(_fit(ctx, t("card.footer"), RECAP_W - PAD*2), RECAP_W/2, RECAP_H - 110);
+  // page dots
+  const n = total, gap = 26, r0 = 7, totalW = (n-1)*gap;
+  const startX = RECAP_W/2 - totalW/2, dy = RECAP_H - 62;
+  for (let i=0;i<n;i++){
+    ctx.beginPath(); ctx.arc(startX + i*gap, dy, r0, 0, 7);
+    ctx.fillStyle = (i === idx) ? RC_ACCENT : "rgba(0,0,0,.18)"; ctx.fill();
+  }
+}
+// reusable 2-column stat tiles, returns the y after the block
+function _slideTiles(ctx, tiles, y){
+  const PAD = RECAP_PAD, CW = RECAP_W - PAD*2, GAP = 30, tw = (CW - GAP)/2, th = 200;
   tiles.forEach((tl, i)=>{
     const col = i % 2, row = Math.floor(i/2);
     const x = PAD + col*(tw+GAP), ty = y + row*(th+GAP);
     _roundRect(ctx, x, ty, tw, th, 24); ctx.fillStyle = "#ffffff"; ctx.fill();
     ctx.strokeStyle = "rgba(0,0,0,.07)"; ctx.lineWidth = 1; ctx.stroke();
     ctx.textAlign = "left";
-    ctx.fillStyle = muted; ctx.font = "30px " + FAM;
-    ctx.fillText(_fit(ctx, tl[0], tw-64), x+34, ty+36);
-    ctx.fillStyle = ink; ctx.font = "700 60px " + FAM;
-    ctx.fillText(_fit(ctx, tl[1], tw-64), x+34, ty+88);
+    ctx.fillStyle = RC_MUTED; ctx.font = "28px " + RECAP_FAM;
+    ctx.fillText(_fit(ctx, tl[0], tw-56), x+30, ty+34);
+    ctx.fillStyle = RC_INK; ctx.font = "700 56px " + RECAP_FAM;
+    ctx.fillText(_fit(ctx, tl[1], tw-56), x+30, ty+84);
   });
-  y += th*2 + GAP + 36;
+  return y + Math.ceil(tiles.length/2)*(th+GAP);
+}
 
-  // distance-by-month bars (seasonality at a glance)
-  const dm = r.monthly_distance;
-  if (dm.y && dm.y.length){
+function buildRecapSlides(){
+  const r = LAST_RESULT, m = r.meta;
+  const PAD = RECAP_PAD, CW = RECAP_W - PAD*2;
+  const slides = [];
+
+  // ---- Slide 1: cover with total-steps hero + sparkline ----
+  {
+    const { cv, ctx } = _newSlide();
+    let y = _slideHeader(ctx, _cardPeriodTitle(r));
     ctx.textAlign = "left";
-    ctx.fillStyle = ink; ctx.font = "600 32px " + FAM;
-    ctx.fillText(t("chart.dist.title"), PAD, y); y += 44;
-    _miniBars(ctx, dm.y, PAD, y, CW, 150, accent);
-    y += 150 + 36;
+    ctx.fillStyle = RC_MUTED; ctx.font = "32px " + RECAP_FAM;
+    ctx.fillText((m.date_min||"") + "  →  " + (m.date_max||""), PAD, y); y += 64;
+
+    const heroH = 360;
+    const hg = ctx.createLinearGradient(PAD, y, PAD+CW, y+heroH);
+    hg.addColorStop(0, "#fa3c4c"); hg.addColorStop(1, "#ff7a52");
+    _roundRect(ctx, PAD, y, CW, heroH, 28); ctx.fillStyle = hg; ctx.fill();
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.font = "600 34px " + RECAP_FAM;
+    ctx.fillText(t("card.totalSteps").toUpperCase(), RECAP_W/2, y+48);
+    ctx.fillStyle = "#fff"; ctx.font = "700 132px " + RECAP_FAM;
+    ctx.fillText(_fit(ctx, fmtInt(m.total_steps), CW-80), RECAP_W/2, y+98);
+    const spark = (r.steps_daily.roll && r.steps_daily.roll.length>1) ? r.steps_daily.roll : r.steps_daily.y;
+    _sparkline(ctx, spark, PAD+40, y+248, CW-80, 92, "rgba(255,255,255,.95)", "rgba(255,255,255,.20)");
+
+    slides.push({ cv });
   }
 
-  // bottom panel: best step day, paired with a route outline when available
-  const sy = r.steps_daily.y, sx = r.steps_daily.x;
-  let bestVal = 0, bestDay = "";
-  for (let i=0;i<sy.length;i++){ if (sy[i] > bestVal){ bestVal = sy[i]; bestDay = sx[i]; } }
-  const hero = _pickHeroRoute(r.routes || []);
-
-  if (hero){
-    // two-column dark panel: stats left, route sketch right
-    const bh = 300;
-    _roundRect(ctx, PAD, y, CW, bh, 24); ctx.fillStyle = "#1d1d1f"; ctx.fill();
-    const colW = CW*0.46;
-    ctx.textAlign = "left";
-    if (bestVal > 0){
-      ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 26px " + FAM;
-      ctx.fillText(t("card.bestDay").toUpperCase(), PAD+34, y+34);
-      ctx.fillStyle = "#fff"; ctx.font = "700 44px " + FAM;
-      ctx.fillText(_fit(ctx, fmtInt(bestVal), colW-34), PAD+34, y+74);
-      ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.font = "26px " + FAM;
-      ctx.fillText(_fit(ctx, t("card.steps") + " · " + bestDay, colW-34), PAD+34, y+128);
+  // ---- Slide 2: movement (distance / workouts / active days / flights) ----
+  {
+    const { cv, ctx } = _newSlide();
+    let y = _slideHeader(ctx, t("recap.movement"));
+    y += 20;
+    const tiles = [
+      [t("card.distance"), fmtInt(Math.round(m.total_distance)) + " " + t("kpi.km")],
+      [t("card.workouts"), fmtInt(m.workouts)],
+      [t("card.activeDays"), fmtInt(m.active_days)],
+    ];
+    if (r.flights_month && r.flights_month.y.length){
+      const ft = r.flights_month.y.reduce((a,b)=>a+b,0);
+      tiles.push([t("chart.flights.title"), fmtInt(ft)]);
     }
-    ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 26px " + FAM;
-    ctx.fillText(t("card.longestRoute").toUpperCase(), PAD+34, y+186);
-    ctx.fillStyle = "#fff"; ctx.font = "700 40px " + FAM;
-    ctx.fillText(_fit(ctx, (Math.round(hero.km*10)/10) + " " + t("kpi.km"), colW-34), PAD+34, y+222);
-    // outline in the right column
-    _drawRouteOutline(ctx, hero.route.pts, PAD+colW+20, y+30, CW-colW-54, bh-60, "#ff7a52");
-    y += bh + 36;
-  } else if (bestVal > 0){
-    const bh = 170;
-    _roundRect(ctx, PAD, y, CW, bh, 24); ctx.fillStyle = "#1d1d1f"; ctx.fill();
-    ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 28px " + FAM;
-    ctx.fillText(t("card.bestDay").toUpperCase(), PAD+34, y+34);
-    ctx.fillStyle = "#fff"; ctx.font = "700 50px " + FAM;
-    ctx.fillText(_fit(ctx, tf("card.bestDaySteps", {steps: fmtInt(bestVal), day: bestDay}), CW-68), PAD+34, y+82);
-    y += bh + 36;
+    y = _slideTiles(ctx, tiles, y) + 24;
+    const dm = r.monthly_distance;
+    if (dm.y && dm.y.length){
+      ctx.textAlign = "left";
+      ctx.fillStyle = RC_INK; ctx.font = "600 34px " + RECAP_FAM;
+      ctx.fillText(t("chart.dist.title"), PAD, y); y += 50;
+      _miniBars(ctx, dm.y, PAD, y, CW, 200, RC_ACCENT);
+    }
+    slides.push({ cv });
   }
 
-  // footer pinned to bottom
-  ctx.textAlign = "center";
-  ctx.fillStyle = muted; ctx.font = "28px " + FAM;
-  ctx.fillText(_fit(ctx, t("card.footer"), CW), W/2, H - 120);
-  const gdate = new Date().toLocaleDateString(LANG==="zh"?"zh-CN":"en-US", {year:"numeric",month:"long",day:"numeric"});
-  ctx.fillStyle = "#b0b4ba"; ctx.font = "24px " + FAM;
-  ctx.fillText(tf("report.generated", {date: gdate}), W/2, H - 82);
+  // ---- Slide 3: heart & sleep (only if any of those metrics exist) ----
+  {
+    const tiles = [];
+    if (m.avg_resting_hr != null) tiles.push([t("card.restingHr"), fmtInt(m.avg_resting_hr) + " " + t("kpi.bpm")]);
+    if (r.hrv && r.hrv.y.length) tiles.push([t("chart.hrv.title"), fmtInt(Math.round(_mean(r.hrv.y))) + " ms"]);
+    if (r.sleep && r.sleep.y.length) tiles.push([t("chart.sleep.title"), (_mean(r.sleep.y)).toFixed(1) + " h"]);
+    if (m.sleep_consistency != null) tiles.push([t("rec.sleepConsistency"), fmtInt(m.sleep_consistency) + " / 100"]);
+    if (m.fitness_age != null) tiles.push([t("kpi.fitnessAge"), fmtInt(m.fitness_age)]);
+    if (tiles.length){
+      const { cv, ctx } = _newSlide();
+      let y = _slideHeader(ctx, t("recap.heartSleep"));
+      y += 20;
+      _slideTiles(ctx, tiles, y);
+      slides.push({ cv });
+    }
+  }
 
-  return cv;
+  // ---- Slide 4: records + route outline ----
+  {
+    const sy = r.steps_daily.y, sx = r.steps_daily.x;
+    let bestVal = 0, bestDay = "";
+    for (let i=0;i<sy.length;i++){ if (sy[i] > bestVal){ bestVal = sy[i]; bestDay = sx[i]; } }
+    const recs = computeRecords(r);
+    const hero = _pickHeroRoute(r.routes || []);
+    if (bestVal > 0 || recs.longestStreak || hero){
+      const { cv, ctx } = _newSlide();
+      let y = _slideHeader(ctx, t("recap.records"));
+      y += 20;
+      const tiles = [];
+      if (bestVal > 0) tiles.push([t("card.bestDay"), fmtInt(bestVal)]);
+      if (recs.longestStreak) tiles.push([t("rec.longestStreak"), tf("rec.days",{n:fmtInt(recs.longestStreak.days)})]);
+      if (recs.bestStepMonth) tiles.push([t("rec.bestStepMonth"), fmtInt(recs.bestStepMonth.steps)]);
+      if (recs.bestSleep) tiles.push([t("rec.bestSleep"), tf("rec.hours",{n:recs.bestSleep.hours})]);
+      if (tiles.length) y = _slideTiles(ctx, tiles, y) + 24;
+      if (hero){
+        const bh = 360;
+        _roundRect(ctx, PAD, y, CW, bh, 24); ctx.fillStyle = "#1d1d1f"; ctx.fill();
+        ctx.textAlign = "left";
+        ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 28px " + RECAP_FAM;
+        ctx.fillText(t("card.longestRoute").toUpperCase(), PAD+34, y+30);
+        ctx.fillStyle = "#fff"; ctx.font = "700 46px " + RECAP_FAM;
+        ctx.fillText((Math.round(hero.km*10)/10) + " " + t("kpi.km"), PAD+34, y+68);
+        _drawRouteOutline(ctx, hero.route.pts, PAD+34, y+128, CW-68, bh-160, "#ff7a52");
+      }
+      slides.push({ cv });
+    }
+  }
+
+  // draw footer + page dots on every slide now that we know the count
+  slides.forEach((s, i)=> _slideFooter(s.cv.getContext("2d"), i, slides.length, r));
+  return slides;
 }
 
 function _reportName(ext){
   return "echohealth-report-" + new Date().toISOString().slice(0,10) + "." + ext;
 }
-function _cardName(){
+function _cardName(idx){
   const sel = document.getElementById("periodPick");
   const yr = sel && sel.value && sel.value !== "all" ? sel.value : new Date().toISOString().slice(0,10);
-  return "echohealth-recap-" + yr + ".png";
+  return "echohealth-recap-" + yr + (idx!=null ? "-" + (idx+1) : "") + ".png";
 }
 function _download(blob, name){
   const url = URL.createObjectURL(blob);
@@ -2580,18 +2675,76 @@ document.addEventListener("keydown", e=>{
   if (e.key === "Escape" && pvOverlay.classList.contains("show")) closePreview();
 });
 
+/* --- recap carousel ---------------------------------------------------- */
+const recapOverlay = document.getElementById("recapOverlay");
+let _recapSlides = [], _recapIdx = 0, _recapLastFocus = null, _recapUrl = null;
+
+function _recapShow(i){
+  _recapIdx = Math.max(0, Math.min(_recapSlides.length-1, i));
+  const img = document.getElementById("recapImg");
+  if (_recapUrl) URL.revokeObjectURL(_recapUrl);
+  _recapSlides[_recapIdx].cv.toBlob(b=>{
+    _recapUrl = URL.createObjectURL(b);
+    img.src = _recapUrl;
+  }, "image/png");
+  document.getElementById("recapPrev").disabled = _recapIdx === 0;
+  document.getElementById("recapNext").disabled = _recapIdx === _recapSlides.length-1;
+  document.getElementById("recapHint").textContent =
+    tf(_isTouch ? "recap.hintMobile" : "recap.hint", {i:_recapIdx+1, n:_recapSlides.length});
+}
+async function openRecap(slides){
+  _recapSlides = slides;
+  _recapLastFocus = document.activeElement;
+  recapOverlay.classList.add("show");
+  _recapShow(0);
+  document.getElementById("recapSave").focus();
+}
+function closeRecap(){
+  recapOverlay.classList.remove("show");
+  if (_recapUrl){ URL.revokeObjectURL(_recapUrl); _recapUrl = null; }
+  _recapSlides = [];
+  if (_recapLastFocus && _recapLastFocus.focus) _recapLastFocus.focus();
+}
+function _recapSaveOne(){
+  _recapSlides[_recapIdx].cv.toBlob(b=> _download(b, _cardName(_recapIdx)), "image/png");
+}
+function _recapSaveAll(){
+  // sequential downloads (no zip) — staggered so browsers don't drop them
+  _recapSlides.forEach((s, i)=>{
+    setTimeout(()=> s.cv.toBlob(b=> _download(b, _cardName(i)), "image/png"), i*350);
+  });
+}
+document.getElementById("recapClose").addEventListener("click", closeRecap);
+recapOverlay.addEventListener("click", e=>{ if(e.target===recapOverlay) closeRecap(); });
+document.getElementById("recapPrev").addEventListener("click", ()=> _recapShow(_recapIdx-1));
+document.getElementById("recapNext").addEventListener("click", ()=> _recapShow(_recapIdx+1));
+document.getElementById("recapSave").addEventListener("click", _recapSaveOne);
+document.getElementById("recapSaveAll").addEventListener("click", _recapSaveAll);
+document.addEventListener("keydown", e=>{
+  if (!recapOverlay.classList.contains("show")) return;
+  if (e.key === "Escape") closeRecap();
+  else if (e.key === "ArrowLeft") _recapShow(_recapIdx-1);
+  else if (e.key === "ArrowRight") _recapShow(_recapIdx+1);
+});
+// swipe on touch
+let _recapTouchX = null;
+const _recapBodyEl = document.getElementById("recapBody");
+_recapBodyEl.addEventListener("touchstart", e=>{ _recapTouchX = e.touches[0].clientX; }, {passive:true});
+_recapBodyEl.addEventListener("touchend", e=>{
+  if (_recapTouchX == null) return;
+  const dx = e.changedTouches[0].clientX - _recapTouchX;
+  if (Math.abs(dx) > 40) _recapShow(_recapIdx + (dx < 0 ? 1 : -1));
+  _recapTouchX = null;
+});
+
 (function initReport(){
   const card = document.getElementById("saveCard");
   const png = document.getElementById("savePng");
   const pdf = document.getElementById("savePdf");
 
   card.addEventListener("click", ()=> withReportBusy(card, async ()=>{
-    const cv = buildShareCard();
-    const blob = await new Promise(res=>cv.toBlob(res, "image/png"));
-    if (_pvUrl) URL.revokeObjectURL(_pvUrl);
-    _pvUrl = URL.createObjectURL(blob);
-    document.getElementById("pvSave").textContent = t("report.save");
-    openPreview(_pvUrl, ()=> _download(blob, _cardName()), true);
+    const slides = buildRecapSlides();
+    await openRecap(slides);
   }));
 
   png.addEventListener("click", ()=> withReportBusy(png, async ()=>{
