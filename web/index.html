@@ -126,6 +126,8 @@
   }
   .exp-btn:hover{border-color:var(--accent)}
   .exp-btn:disabled{opacity:.55;cursor:default}
+  .exp-btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .exp-btn.primary:hover{background:#000;border-color:#000}
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:30px 0 8px}
   .kpi{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:18px 18px 16px}
   .kpi-lab{font-size:12.5px;color:var(--muted);font-weight:500}
@@ -256,7 +258,7 @@
     cursor:pointer;padding:2px 8px;font-family:inherit;border-radius:8px;
   }
   .pv-x:hover{color:var(--ink);background:var(--parchment)}
-  .pv-body{overflow:auto;overscroll-behavior:contain;background:var(--parchment);padding:18px;flex:1;min-height:0}
+  .pv-body{overflow:auto;overscroll-behavior:contain;background:var(--parchment);padding:18px;flex:1;min-height:0;text-align:center}
   .pv-body img{display:block;width:100%;height:auto;border-radius:10px;box-shadow:0 1px 8px rgba(0,0,0,.12)}
   .pv-foot{
     display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;
@@ -363,6 +365,7 @@
         <select id="periodPick"></select>
       </span>
       <span class="results-actions">
+        <button class="exp-btn primary" id="saveCard" data-i="card.save"></button>
         <button class="exp-btn" id="savePng" data-i="report.savePng"></button>
         <button class="exp-btn" id="savePdf" data-i="report.savePdf"></button>
       </span>
@@ -441,6 +444,17 @@ const I18N = {
     "report.savePdfAction": "Download PDF",
     "report.hintDesktop": "Preview your report, then download it.",
     "report.hintMobile": "Press and hold the image to save it to Photos, or tap Download.",
+    "card.save": "Share card",
+    "card.allTime": "All-time recap",
+    "card.yearReview": "{year} in review",
+    "card.totalSteps": "Total steps",
+    "card.distance": "Distance",
+    "card.workouts": "Workouts",
+    "card.activeDays": "Active days",
+    "card.restingHr": "Avg resting HR",
+    "card.bestDay": "Best day",
+    "card.bestDaySteps": "{steps} steps · {day}",
+    "card.footer": "Made on-device with EchoHealth · nothing uploaded",
     "kpi.dateRange": "Date range",
     "kpi.records": "Health records",
     "kpi.totalSteps": "Total steps",
@@ -538,6 +552,17 @@ const I18N = {
     "report.savePdfAction": "下载 PDF",
     "report.hintDesktop": "预览报告后再下载。",
     "report.hintMobile": "长按图片可保存到照片，或点击“下载”。",
+    "card.save": "分享卡片",
+    "card.allTime": "全时段回顾",
+    "card.yearReview": "{year} 年度回顾",
+    "card.totalSteps": "总步数",
+    "card.distance": "距离",
+    "card.workouts": "锻炼次数",
+    "card.activeDays": "活跃天数",
+    "card.restingHr": "平均静息心率",
+    "card.bestDay": "最佳一天",
+    "card.bestDaySteps": "{day} · {steps} 步",
+    "card.footer": "由 EchoHealth 在本设备生成 · 不上传任何数据",
     "kpi.dateRange": "数据日期范围",
     "kpi.records": "健康记录数",
     "kpi.totalSteps": "总步数",
@@ -1426,8 +1451,113 @@ async function buildReportCanvas(){
   return cv;
 }
 
+/* --- year-in-review share card (portrait 9:16, story-shaped) ----------
+   A single bold image summarising the period currently in view. Built on a
+   fixed 1080×1920 canvas (well under iOS Safari's canvas limit) so it shares
+   cleanly to stories/messages. Routed through the same preview modal.
+   -------------------------------------------------------------------- */
+function _cardPeriodTitle(r){
+  const sel = document.getElementById("periodPick");
+  const yr = sel ? sel.value : "all";
+  if (yr && yr !== "all") return tf("card.yearReview", {year: yr});
+  const y0 = String(r.meta.date_min||"").slice(0,4);
+  const y1 = String(r.meta.date_max||"").slice(0,4);
+  if (y0 && y0 === y1) return tf("card.yearReview", {year: y0});
+  return t("card.allTime");
+}
+
+function buildShareCard(){
+  const r = LAST_RESULT, m = r.meta;
+  const W = 1080, H = 1920, PAD = 90, CW = W - PAD*2;
+  const FAM = '-apple-system, "Segoe UI", Roboto, sans-serif';
+  const ink = "#1d1d1f", muted = "#6e6e73", accent = "#fa3c4c";
+
+  const cv = document.createElement("canvas");
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  ctx.textBaseline = "top";
+
+  // soft background
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0, "#fff6f6"); bg.addColorStop(0.5, "#ffffff"); bg.addColorStop(1, "#f5f5f7");
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  // header
+  let y = 150;
+  ctx.textAlign = "left";
+  ctx.fillStyle = accent; ctx.font = "700 30px " + FAM;
+  ctx.fillText("ECHOHEALTH", PAD, y); y += 46;
+  ctx.fillStyle = ink; ctx.font = "700 76px " + FAM;
+  ctx.fillText(_fit(ctx, _cardPeriodTitle(r), CW), PAD, y); y += 92;
+  ctx.fillStyle = muted; ctx.font = "34px " + FAM;
+  ctx.fillText((m.date_min||"") + "  →  " + (m.date_max||""), PAD, y); y += 70;
+
+  // hero: total steps, accent panel
+  const heroH = 300;
+  const hg = ctx.createLinearGradient(PAD, y, PAD+CW, y+heroH);
+  hg.addColorStop(0, "#fa3c4c"); hg.addColorStop(1, "#ff7a52");
+  _roundRect(ctx, PAD, y, CW, heroH, 28); ctx.fillStyle = hg; ctx.fill();
+  ctx.textAlign = "center";
+  ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.font = "600 34px " + FAM;
+  ctx.fillText(t("card.totalSteps").toUpperCase(), W/2, y+50);
+  ctx.fillStyle = "#fff"; ctx.font = "700 132px " + FAM;
+  ctx.fillText(_fit(ctx, fmtInt(m.total_steps), CW-80), W/2, y+108);
+  y += heroH + 40;
+
+  // 2×2 stat tiles
+  const tiles = [
+    [t("card.distance"), fmtInt(Math.round(m.total_distance)) + " " + t("kpi.km")],
+    [t("card.workouts"), fmtInt(m.workouts)],
+    [t("card.activeDays"), fmtInt(m.active_days)],
+    [t("card.restingHr"), (m.avg_resting_hr==null ? "—" : fmtInt(m.avg_resting_hr) + " " + t("kpi.bpm"))],
+  ];
+  const GAP = 30, tw = (CW - GAP)/2, th = 230;
+  tiles.forEach((tl, i)=>{
+    const col = i % 2, row = Math.floor(i/2);
+    const x = PAD + col*(tw+GAP), ty = y + row*(th+GAP);
+    _roundRect(ctx, x, ty, tw, th, 24); ctx.fillStyle = "#ffffff"; ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,.07)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.textAlign = "left";
+    ctx.fillStyle = muted; ctx.font = "30px " + FAM;
+    ctx.fillText(_fit(ctx, tl[0], tw-64), x+34, ty+40);
+    ctx.fillStyle = ink; ctx.font = "700 64px " + FAM;
+    ctx.fillText(_fit(ctx, tl[1], tw-64), x+34, ty+96);
+  });
+  y += th*2 + GAP + 40;
+
+  // best day banner (steps)
+  const sy = r.steps_daily.y, sx = r.steps_daily.x;
+  let bestVal = 0, bestDay = "";
+  for (let i=0;i<sy.length;i++){ if (sy[i] > bestVal){ bestVal = sy[i]; bestDay = sx[i]; } }
+  if (bestVal > 0){
+    const bh = 200;
+    _roundRect(ctx, PAD, y, CW, bh, 24); ctx.fillStyle = "#1d1d1f"; ctx.fill();
+    ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 30px " + FAM;
+    ctx.fillText(t("card.bestDay").toUpperCase(), PAD+34, y+40);
+    ctx.fillStyle = "#fff"; ctx.font = "700 54px " + FAM;
+    ctx.fillText(_fit(ctx, tf("card.bestDaySteps", {steps: fmtInt(bestVal), day: bestDay}), CW-68), PAD+34, y+92);
+    y += bh + 40;
+  }
+
+  // footer pinned to bottom
+  ctx.textAlign = "center";
+  ctx.fillStyle = muted; ctx.font = "28px " + FAM;
+  ctx.fillText(_fit(ctx, t("card.footer"), CW), W/2, H - 120);
+  const gdate = new Date().toLocaleDateString(LANG==="zh"?"zh-CN":"en-US", {year:"numeric",month:"long",day:"numeric"});
+  ctx.fillStyle = "#b0b4ba"; ctx.font = "24px " + FAM;
+  ctx.fillText(tf("report.generated", {date: gdate}), W/2, H - 82);
+
+  return cv;
+}
+
 function _reportName(ext){
   return "echohealth-report-" + new Date().toISOString().slice(0,10) + "." + ext;
+}
+function _cardName(){
+  const sel = document.getElementById("periodPick");
+  const yr = sel && sel.value && sel.value !== "all" ? sel.value : new Date().toISOString().slice(0,10);
+  return "echohealth-recap-" + yr + ".png";
 }
 function _download(blob, name){
   const url = URL.createObjectURL(blob);
@@ -1459,7 +1589,7 @@ const pvOverlay = document.getElementById("pvOverlay");
 let _pvLastFocus = null, _pvSaveFn = null, _pvUrl = null;
 const _isTouch = (window.matchMedia && window.matchMedia("(pointer:coarse)").matches);
 
-function openPreview(blobUrl, saveFn){
+function openPreview(blobUrl, saveFn, portrait){
   _pvLastFocus = document.activeElement;
   _pvSaveFn = saveFn;
   const body = document.getElementById("pvBody");
@@ -1467,6 +1597,13 @@ function openPreview(blobUrl, saveFn){
   const img = new Image();
   img.src = blobUrl;
   img.alt = t("report.previewTitle");
+  if (portrait){
+    // tall story card: fit by height, centred, so it isn't a giant scroll
+    img.style.width = "auto";
+    img.style.maxWidth = "100%";
+    img.style.maxHeight = "70vh";
+    img.style.margin = "0 auto";
+  }
   body.appendChild(img);
   body.scrollTop = 0;
   document.getElementById("pvHint").textContent = _isTouch ? t("report.hintMobile") : t("report.hintDesktop");
@@ -1487,8 +1624,18 @@ document.addEventListener("keydown", e=>{
 });
 
 (function initReport(){
+  const card = document.getElementById("saveCard");
   const png = document.getElementById("savePng");
   const pdf = document.getElementById("savePdf");
+
+  card.addEventListener("click", ()=> withReportBusy(card, async ()=>{
+    const cv = buildShareCard();
+    const blob = await new Promise(res=>cv.toBlob(res, "image/png"));
+    if (_pvUrl) URL.revokeObjectURL(_pvUrl);
+    _pvUrl = URL.createObjectURL(blob);
+    document.getElementById("pvSave").textContent = t("report.save");
+    openPreview(_pvUrl, ()=> _download(blob, _cardName()), true);
+  }));
 
   png.addEventListener("click", ()=> withReportBusy(png, async ()=>{
     const cv = await buildReportCanvas();
