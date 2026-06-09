@@ -200,36 +200,6 @@
   .rec-val{font-size:24px;font-weight:600;letter-spacing:-.4px;font-variant-numeric:tabular-nums}
   .rec-sub{font-size:12px;color:var(--muted)}
 
-  /* ---- on-device history ---- */
-  .hist{margin:26px 0 0}
-  .hist-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
-  .hist-head h3{margin:0;font-size:17px;font-weight:600;letter-spacing:-.2px}
-  .hist-actions{display:flex;gap:8px;flex-wrap:wrap}
-  .hist-btn{
-    background:var(--canvas);border:1px solid var(--hairline);border-radius:9999px;color:var(--ink);
-    font-family:inherit;font-size:12.5px;font-weight:500;padding:7px 14px;cursor:pointer;
-  }
-  .hist-btn:hover{border-color:var(--accent)}
-  .hist-btn.primary{background:var(--ink);color:var(--canvas);border-color:var(--ink)}
-  .hist-btn.primary:hover{opacity:.88}
-  .hist-privacy{
-    margin:0 0 14px;font-size:12.5px;line-height:1.6;color:var(--muted);
-    background:var(--canvas);border:1px solid var(--hairline);border-left:3px solid var(--green);
-    border-radius:10px;padding:11px 14px;
-  }
-  .hist-empty{font-size:13px;color:var(--muted);padding:6px 2px}
-  .hist-table{width:100%;border-collapse:collapse;font-size:13px}
-  .hist-table th{
-    text-align:left;font-weight:500;color:var(--muted);font-size:12px;
-    padding:6px 10px;border-bottom:1px solid var(--hairline);
-  }
-  .hist-table td{
-    padding:9px 10px;border-bottom:1px solid var(--hairline);color:var(--ink);
-    font-variant-numeric:tabular-nums;
-  }
-  .hist-table tr:last-child td{border-bottom:none}
-  .hist-table th.num,.hist-table td.num{text-align:right}
-
   /* ---- patterns / correlations ---- */
   .patterns{margin:26px 0 0}
   .patterns h3{margin:0 0 2px;font-size:17px;font-weight:600;letter-spacing:-.2px}
@@ -537,14 +507,6 @@
       <h3 data-i="rec.title"></h3>
       <div class="rec-grid" id="recGrid"></div>
     </section>
-    <section class="hist" id="histSec" style="display:none">
-      <div class="hist-head">
-        <h3 data-i="hist.title"></h3>
-        <span class="hist-actions" id="histActions"></span>
-      </div>
-      <p class="hist-privacy" data-i="hist.privacy"></p>
-      <div class="hist-body" id="histBody"></div>
-    </section>
     <section class="charts">
       <div class="grid" id="chartGrid"></div>
     </section>
@@ -634,19 +596,6 @@ const I18N = {
     "rec.days": "{n} days",
     "rec.hours": "{n} h",
     "corr.title": "Patterns in your data",
-    "hist.title": "On-device history",
-    "hist.privacy": "Private by design. When enabled, only a tiny summary (about 15 numbers per upload, never your export and never any location or raw record) is saved in this browser on this device. Nothing is uploaded. It only persists on this device, and you can clear it anytime.",
-    "hist.enable": "Enable history",
-    "hist.disable": "Turn off",
-    "hist.clear": "Clear history",
-    "hist.empty": "Your saved summaries will appear here after your next uploads.",
-    "hist.count": "{n} saved on this device",
-    "hist.colDate": "Saved",
-    "hist.colRange": "Data range",
-    "hist.colSteps": "Avg steps/day",
-    "hist.colRhr": "Resting HR",
-    "hist.colFit": "Fitness age",
-    "hist.confirmClear": "Clear all saved history on this device? This cannot be undone.",
     "corr.sub": "How your daily metrics tend to move together. These are associations, not cause and effect.",
     "corr.sentence": "On days with more {a}, your {b} tends to be {dir}.",
     "corr.higher": "higher",
@@ -828,19 +777,6 @@ const I18N = {
     "rec.days": "{n} 天",
     "rec.hours": "{n} 小时",
     "corr.title": "你数据中的规律",
-    "hist.title": "本设备历史记录",
-    "hist.privacy": "隐私优先设计。启用后，仅会在本设备的浏览器中保存一份极小的汇总（每次上传约 15 个数字，不包含你的导出文件，也不包含任何位置或原始记录）。不会上传任何数据，仅保存在本设备上，你可随时清除。",
-    "hist.enable": "启用历史记录",
-    "hist.disable": "关闭",
-    "hist.clear": "清除历史",
-    "hist.empty": "你之后上传的汇总将显示在这里。",
-    "hist.count": "已在本设备保存 {n} 条",
-    "hist.colDate": "保存于",
-    "hist.colRange": "数据范围",
-    "hist.colSteps": "日均步数",
-    "hist.colRhr": "静息心率",
-    "hist.colFit": "体能年龄",
-    "hist.confirmClear": "确定要清除本设备上保存的全部历史记录吗？此操作无法撤销。",
     "corr.sub": "你的每日指标是如何一起变化的。这些是相关关系，并非因果。",
     "corr.sentence": "在{a}较多的日子里，你的{b}往往会{dir}。",
     "corr.higher": "更高",
@@ -1042,7 +978,7 @@ function applyLang(){
     b.setAttribute("aria-pressed", on ? "true" : "false");
   });
   // re-render results if we already have data
-  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderRecords(LAST_RESULT); renderHistory(); renderCharts(LAST_RESULT); renderCorrelations(LAST_RESULT); refreshRouteText(); refreshPeriodText(); }
+  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderRecords(LAST_RESULT); renderCharts(LAST_RESULT); renderCorrelations(LAST_RESULT); refreshRouteText(); refreshPeriodText(); }
   // refresh the install reminder text if it is showing
   const ib = document.getElementById("installBar");
   if (ib && ib.style.display !== "none"){
@@ -1641,10 +1577,8 @@ async function handleFile(file){
     LAST_RESULT = FULL_RESULT;
     showStage("results");
     populatePeriodPicker(FULL_RESULT);
-    histRecord(FULL_RESULT);
     renderKPIs(LAST_RESULT);
     renderRecords(LAST_RESULT);
-    renderHistory();
     await loadPlotly();
     renderCharts(LAST_RESULT);
     renderCorrelations(LAST_RESULT);
@@ -1938,101 +1872,6 @@ function computeRecords(r){
   if (r.meta && r.meta.sleep_consistency != null) out.sleepConsistency = { score: r.meta.sleep_consistency };
 
   return out;
-}
-
-/* --- on-device history (opt-in) ----------------------------------------
-   Stores a tiny per-upload summary in localStorage on THIS device only. Never
-   the export, never raw records, never location — about 15 numbers per upload.
-   Opt-in; user can clear or disable anytime. Snapshots come from the full
-   all-time result so they are comparable regardless of the period filter.
-   ----------------------------------------------------------------------- */
-const HIST_KEY = "ah_history";
-const HIST_OPTIN = "ah_history_optin";
-function histEnabled(){ return localStorage.getItem(HIST_OPTIN) === "1"; }
-function histLoad(){ try { return JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); } catch(e){ return []; } }
-function histSave(arr){ try { localStorage.setItem(HIST_KEY, JSON.stringify(arr)); } catch(e){} }
-function histSnapshot(r){
-  const m = r.meta;
-  return {
-    saved: new Date().toISOString().slice(0,10),
-    from: m.date_min || "", to: m.date_max || "",
-    avgSteps: r.steps_daily.y.length ? Math.round(_mean(r.steps_daily.y)) : null,
-    rhr: m.avg_resting_hr,
-    hrv: (r.hrv && r.hrv.y.length) ? Math.round(_mean(r.hrv.y)) : null,
-    sleep: (r.sleep && r.sleep.y.length) ? Math.round(_mean(r.sleep.y)*10)/10 : null,
-    sleepCons: m.sleep_consistency,
-    fitAge: m.fitness_age,
-  };
-}
-// Save the current full-export summary when history is enabled. De-dupes by
-// data range so re-uploading the same export updates rather than duplicates.
-function histRecord(r){
-  if (!histEnabled() || !r) return;
-  const arr = histLoad();
-  const snap = histSnapshot(r);
-  const i = arr.findIndex(s => s.from === snap.from && s.to === snap.to);
-  if (i >= 0) arr[i] = snap; else arr.push(snap);
-  arr.sort((a,b)=> a.to < b.to ? -1 : (a.to > b.to ? 1 : 0));
-  histSave(arr);
-}
-function renderHistory(){
-  const sec = document.getElementById("histSec");
-  const actions = document.getElementById("histActions");
-  const body = document.getElementById("histBody");
-  if (!sec) return;
-  sec.style.display = "";
-  const enabled = histEnabled();
-  const arr = histLoad();
-
-  // action buttons
-  actions.innerHTML = "";
-  const mkBtn = (label, cls, fn)=>{
-    const b = document.createElement("button");
-    b.className = "hist-btn" + (cls ? " " + cls : "");
-    b.textContent = label; b.addEventListener("click", fn);
-    return b;
-  };
-  if (enabled){
-    actions.appendChild(mkBtn(t("hist.disable"), "", ()=>{
-      localStorage.setItem(HIST_OPTIN, "0"); renderHistory();
-    }));
-  } else {
-    actions.appendChild(mkBtn(t("hist.enable"), "primary", ()=>{
-      localStorage.setItem(HIST_OPTIN, "1");
-      histRecord(FULL_RESULT);   // capture the upload currently on screen
-      renderHistory();
-    }));
-  }
-  if (arr.length){
-    actions.appendChild(mkBtn(t("hist.clear"), "", ()=>{
-      if (confirm(t("hist.confirmClear"))){ histSave([]); renderHistory(); }
-    }));
-  }
-
-  // body
-  if (!arr.length){
-    body.innerHTML = `<p class="hist-empty">${enabled ? t("hist.empty") : ""}</p>`;
-    return;
-  }
-  const rows = arr.slice().reverse().map(s=>`
-    <tr>
-      <td>${s.saved}</td>
-      <td>${(s.from||"—")} → ${(s.to||"—")}</td>
-      <td class="num">${s.avgSteps==null?"—":fmtInt(s.avgSteps)}</td>
-      <td class="num">${s.rhr==null?"—":fmtInt(s.rhr)}</td>
-      <td class="num">${s.fitAge==null?"—":fmtInt(s.fitAge)}</td>
-    </tr>`).join("");
-  body.innerHTML = `
-    <table class="hist-table">
-      <thead><tr>
-        <th>${t("hist.colDate")}</th>
-        <th>${t("hist.colRange")}</th>
-        <th class="num">${t("hist.colSteps")}</th>
-        <th class="num">${t("hist.colRhr")}</th>
-        <th class="num">${t("hist.colFit")}</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
 }
 
 /* --- patterns / correlations -------------------------------------------
