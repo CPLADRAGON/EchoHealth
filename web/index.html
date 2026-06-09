@@ -1456,6 +1456,36 @@ async function buildReportCanvas(){
    fixed 1080×1920 canvas (well under iOS Safari's canvas limit) so it shares
    cleanly to stories/messages. Routed through the same preview modal.
    -------------------------------------------------------------------- */
+function _minMax(a){ let lo=Infinity, hi=-Infinity; for (const v of a){ if(v<lo)lo=v; if(v>hi)hi=v; } return [lo,hi]; }
+
+// Smooth area sparkline (used for the rolling-steps trend inside the hero).
+function _sparkline(ctx, vals, x, y, w, h, lineColor, fillColor){
+  const n = vals.length; if (n < 2) return;
+  let [lo, hi] = _minMax(vals); if (hi === lo) hi = lo + 1;
+  const px = i => x + (i/(n-1))*w;
+  const py = v => y + h - ((v-lo)/(hi-lo))*h;
+  ctx.beginPath(); ctx.moveTo(px(0), py(vals[0]));
+  for (let i=1;i<n;i++) ctx.lineTo(px(i), py(vals[i]));
+  ctx.lineTo(px(n-1), y+h); ctx.lineTo(px(0), y+h); ctx.closePath();
+  ctx.fillStyle = fillColor; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(px(0), py(vals[0]));
+  for (let i=1;i<n;i++) ctx.lineTo(px(i), py(vals[i]));
+  ctx.strokeStyle = lineColor; ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.stroke();
+}
+
+// Compact bar strip (used for distance-by-month seasonality).
+function _miniBars(ctx, vals, x, y, w, h, color){
+  const n = vals.length; if (!n) return;
+  const [, hi] = _minMax(vals); const top = hi > 0 ? hi : 1;
+  const gap = n > 24 ? 2 : (n > 12 ? 4 : 8);
+  const bw = (w - gap*(n-1))/n;
+  for (let i=0;i<n;i++){
+    const bh = Math.max(3, (vals[i]/top)*h);
+    _roundRect(ctx, x + i*(bw+gap), y + h - bh, bw, bh, Math.min(6, bw/2));
+    ctx.fillStyle = color; ctx.fill();
+  }
+}
+
 function _cardPeriodTitle(r){
   const sel = document.getElementById("periodPick");
   const yr = sel ? sel.value : "all";
@@ -1492,17 +1522,21 @@ function buildShareCard(){
   ctx.fillStyle = muted; ctx.font = "34px " + FAM;
   ctx.fillText((m.date_min||"") + "  →  " + (m.date_max||""), PAD, y); y += 70;
 
-  // hero: total steps, accent panel
-  const heroH = 300;
+  // hero: total steps, accent panel, with a rolling-steps sparkline beneath
+  const heroH = 340;
   const hg = ctx.createLinearGradient(PAD, y, PAD+CW, y+heroH);
   hg.addColorStop(0, "#fa3c4c"); hg.addColorStop(1, "#ff7a52");
   _roundRect(ctx, PAD, y, CW, heroH, 28); ctx.fillStyle = hg; ctx.fill();
   ctx.textAlign = "center";
   ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.font = "600 34px " + FAM;
-  ctx.fillText(t("card.totalSteps").toUpperCase(), W/2, y+50);
-  ctx.fillStyle = "#fff"; ctx.font = "700 132px " + FAM;
-  ctx.fillText(_fit(ctx, fmtInt(m.total_steps), CW-80), W/2, y+108);
-  y += heroH + 40;
+  ctx.fillText(t("card.totalSteps").toUpperCase(), W/2, y+44);
+  ctx.fillStyle = "#fff"; ctx.font = "700 128px " + FAM;
+  ctx.fillText(_fit(ctx, fmtInt(m.total_steps), CW-80), W/2, y+92);
+  // sparkline of the 30-day rolling step average (falls back to daily)
+  const spark = (r.steps_daily.roll && r.steps_daily.roll.length>1) ? r.steps_daily.roll : r.steps_daily.y;
+  _sparkline(ctx, spark, PAD+40, y+236, CW-80, 86,
+    "rgba(255,255,255,.95)", "rgba(255,255,255,.20)");
+  y += heroH + 36;
 
   // 2×2 stat tiles
   const tiles = [
@@ -1511,7 +1545,7 @@ function buildShareCard(){
     [t("card.activeDays"), fmtInt(m.active_days)],
     [t("card.restingHr"), (m.avg_resting_hr==null ? "—" : fmtInt(m.avg_resting_hr) + " " + t("kpi.bpm"))],
   ];
-  const GAP = 30, tw = (CW - GAP)/2, th = 230;
+  const GAP = 30, tw = (CW - GAP)/2, th = 210;
   tiles.forEach((tl, i)=>{
     const col = i % 2, row = Math.floor(i/2);
     const x = PAD + col*(tw+GAP), ty = y + row*(th+GAP);
@@ -1519,25 +1553,35 @@ function buildShareCard(){
     ctx.strokeStyle = "rgba(0,0,0,.07)"; ctx.lineWidth = 1; ctx.stroke();
     ctx.textAlign = "left";
     ctx.fillStyle = muted; ctx.font = "30px " + FAM;
-    ctx.fillText(_fit(ctx, tl[0], tw-64), x+34, ty+40);
-    ctx.fillStyle = ink; ctx.font = "700 64px " + FAM;
-    ctx.fillText(_fit(ctx, tl[1], tw-64), x+34, ty+96);
+    ctx.fillText(_fit(ctx, tl[0], tw-64), x+34, ty+36);
+    ctx.fillStyle = ink; ctx.font = "700 60px " + FAM;
+    ctx.fillText(_fit(ctx, tl[1], tw-64), x+34, ty+88);
   });
-  y += th*2 + GAP + 40;
+  y += th*2 + GAP + 36;
+
+  // distance-by-month bars (seasonality at a glance)
+  const dm = r.monthly_distance;
+  if (dm.y && dm.y.length){
+    ctx.textAlign = "left";
+    ctx.fillStyle = ink; ctx.font = "600 32px " + FAM;
+    ctx.fillText(t("chart.dist.title"), PAD, y); y += 44;
+    _miniBars(ctx, dm.y, PAD, y, CW, 150, accent);
+    y += 150 + 36;
+  }
 
   // best day banner (steps)
   const sy = r.steps_daily.y, sx = r.steps_daily.x;
   let bestVal = 0, bestDay = "";
   for (let i=0;i<sy.length;i++){ if (sy[i] > bestVal){ bestVal = sy[i]; bestDay = sx[i]; } }
   if (bestVal > 0){
-    const bh = 200;
+    const bh = 170;
     _roundRect(ctx, PAD, y, CW, bh, 24); ctx.fillStyle = "#1d1d1f"; ctx.fill();
     ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 30px " + FAM;
-    ctx.fillText(t("card.bestDay").toUpperCase(), PAD+34, y+40);
-    ctx.fillStyle = "#fff"; ctx.font = "700 54px " + FAM;
-    ctx.fillText(_fit(ctx, tf("card.bestDaySteps", {steps: fmtInt(bestVal), day: bestDay}), CW-68), PAD+34, y+92);
-    y += bh + 40;
+    ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 28px " + FAM;
+    ctx.fillText(t("card.bestDay").toUpperCase(), PAD+34, y+34);
+    ctx.fillStyle = "#fff"; ctx.font = "700 50px " + FAM;
+    ctx.fillText(_fit(ctx, tf("card.bestDaySteps", {steps: fmtInt(bestVal), day: bestDay}), CW-68), PAD+34, y+82);
+    y += bh + 36;
   }
 
   // footer pinned to bottom
