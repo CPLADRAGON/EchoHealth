@@ -1653,7 +1653,7 @@ function renderCorrelations(r){
     lay.hovermode = "closest";
     lay.xaxis.title = {text:a, font:{size:12}};
     Plotly.newPlot("corrChart", [{
-      type:"scattergl", mode:"markers", x:top.xs, y:top.ys,
+      type:"scatter", mode:"markers", x:top.xs, y:top.ys,
       marker:{color:"rgba(250,60,76,0.45)", size:6},
       hovertemplate:"%{x}<br>%{y}<extra></extra>",
     }], lay, PLOT_CFG);
