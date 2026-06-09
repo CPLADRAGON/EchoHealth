@@ -175,6 +175,23 @@
   .rec-val{font-size:24px;font-weight:600;letter-spacing:-.4px;font-variant-numeric:tabular-nums}
   .rec-sub{font-size:12px;color:var(--muted)}
 
+  /* ---- patterns / correlations ---- */
+  .patterns{margin:26px 0 0}
+  .patterns h3{margin:0 0 2px;font-size:17px;font-weight:600;letter-spacing:-.2px}
+  .corr-sub{margin:0 0 14px;font-size:13px;color:var(--muted)}
+  .corr-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+  .corr{
+    background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:16px 18px;
+    display:flex;flex-direction:column;gap:8px;
+  }
+  .corr-text{font-size:14px;line-height:1.55;color:var(--ink)}
+  .corr-meta{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted)}
+  .corr-bar{flex:1;height:6px;border-radius:9999px;background:var(--grid);overflow:hidden;min-width:60px}
+  .corr-bar i{display:block;height:100%;border-radius:9999px;background:var(--accent)}
+  .corr-r{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .corr-chartcard{margin-top:16px}
+  .corr-foot{margin:14px 2px 0;font-size:12px;line-height:1.6;color:var(--muted)}
+
   section.charts{padding:18px 0 10px}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:20px}
   .card{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:18px 18px 8px;min-width:0}
@@ -421,6 +438,19 @@
       <div class="grid" id="chartGrid"></div>
     </section>
 
+    <!-- patterns / correlations -->
+    <section class="patterns" id="patternsSec" style="display:none">
+      <h3 data-i="corr.title"></h3>
+      <p class="corr-sub" data-i="corr.sub"></p>
+      <div class="corr-list" id="corrList"></div>
+      <div class="card corr-chartcard" id="corrChartCard" style="display:none">
+        <h3 data-i="corr.chartTitle"></h3>
+        <p class="csub" id="corrChartSub"></p>
+        <div class="plotwrap" id="corrChart"></div>
+      </div>
+      <p class="corr-foot" data-i="corr.disclaimer"></p>
+    </section>
+
     <!-- routes map -->
     <section class="mapsec card" id="mapSec" style="display:none">
       <div class="map-head">
@@ -488,6 +518,20 @@ const I18N = {
     "rec.lowestRhr": "Lowest resting HR",
     "rec.days": "{n} days",
     "rec.hours": "{n} h",
+    "corr.title": "Patterns in your data",
+    "corr.sub": "How your daily metrics tend to move together. These are associations, not cause and effect.",
+    "corr.sentence": "On days with more {a}, your {b} tends to be {dir}.",
+    "corr.higher": "higher",
+    "corr.lower": "lower",
+    "corr.meta": "based on {n} shared days",
+    "corr.chartTitle": "Strongest pattern",
+    "corr.chartSub": "{a} vs {b} · each dot is one day",
+    "corr.disclaimer": "Correlation is not causation. These patterns are statistical associations in your own data and are not medical advice.",
+    "corr.m.steps": "steps",
+    "corr.m.distance": "walking + running distance",
+    "corr.m.sleep": "sleep",
+    "corr.m.rhr": "resting heart rate",
+    "corr.m.hrv": "heart rate variability",
     "report.savePng": "Save image",
     "report.savePdf": "Save PDF",
     "report.generating": "Preparing\u2026",
@@ -608,6 +652,20 @@ const I18N = {
     "rec.lowestRhr": "最低静息心率",
     "rec.days": "{n} 天",
     "rec.hours": "{n} 小时",
+    "corr.title": "你数据中的规律",
+    "corr.sub": "你的每日指标是如何一起变化的。这些是相关关系，并非因果。",
+    "corr.sentence": "在{a}较多的日子里，你的{b}往往会{dir}。",
+    "corr.higher": "更高",
+    "corr.lower": "更低",
+    "corr.meta": "基于 {n} 个共同日期",
+    "corr.chartTitle": "最明显的规律",
+    "corr.chartSub": "{a} 与 {b} · 每个点代表一天",
+    "corr.disclaimer": "相关不等于因果。这些规律只是你自己数据中的统计相关性，不构成医疗建议。",
+    "corr.m.steps": "步数",
+    "corr.m.distance": "步行 + 跑步距离",
+    "corr.m.sleep": "睡眠",
+    "corr.m.rhr": "静息心率",
+    "corr.m.hrv": "心率变异性",
     "report.savePng": "保存图片",
     "report.savePdf": "保存 PDF",
     "report.generating": "正在生成\u2026",
@@ -753,7 +811,7 @@ function applyLang(){
     b.setAttribute("aria-pressed", on ? "true" : "false");
   });
   // re-render results if we already have data
-  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderRecords(LAST_RESULT); renderCharts(LAST_RESULT); refreshRouteText(); refreshPeriodText(); }
+  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderRecords(LAST_RESULT); renderCharts(LAST_RESULT); renderCorrelations(LAST_RESULT); refreshRouteText(); refreshPeriodText(); }
   renderAiStatic();
 }
 
@@ -1156,6 +1214,7 @@ async function handleFile(file){
     renderRecords(LAST_RESULT);
     await loadPlotly();
     renderCharts(LAST_RESULT);
+    renderCorrelations(LAST_RESULT);
     renderRoutes(LAST_RESULT);
   }catch(err){
     console.error(err);
@@ -1261,6 +1320,7 @@ function applyPeriod(){
   renderKPIs(LAST_RESULT);
   renderRecords(LAST_RESULT);
   renderCharts(LAST_RESULT);
+  renderCorrelations(LAST_RESULT);
   renderRoutes(LAST_RESULT);
 }
 function refreshPeriodText(){
@@ -1398,6 +1458,101 @@ function computeRecords(r){
   if (lr && isFinite(lr.v)) out.lowestRhr = { bpm: lr.v, date: lr.x };
 
   return out;
+}
+
+/* --- patterns / correlations -------------------------------------------
+   Pearson correlation between day-aligned metric pairs. Conservative gates
+   (>= MIN_DAYS shared days, |r| >= MIN_R) keep findings meaningful and avoid
+   over-claiming. Purely derived from the existing daily series; no raw data.
+   ----------------------------------------------------------------------- */
+const CORR_MIN_DAYS = 30;
+const CORR_MIN_R = 0.2;
+// candidate pairs: [metricKeyA, seriesA, metricKeyB, seriesB] — daily series only
+const CORR_PAIRS = [
+  ["steps","steps_daily","sleep","sleep"],
+  ["steps","steps_daily","rhr","resting_hr"],
+  ["steps","steps_daily","hrv","hrv"],
+  ["sleep","sleep","rhr","resting_hr"],
+  ["sleep","sleep","hrv","hrv"],
+  ["rhr","resting_hr","hrv","hrv"],
+];
+function _seriesToDayMap(s){
+  // only daily series (date keys length 10) are usable for day-aligned pairing
+  const m = new Map();
+  for (let i=0;i<s.x.length;i++){ if (String(s.x[i]).length === 10) m.set(s.x[i], s.y[i]); }
+  return m;
+}
+function _pearson(xs, ys){
+  const n = xs.length; if (n < 2) return 0;
+  let sx=0, sy=0, sxx=0, syy=0, sxy=0;
+  for (let i=0;i<n;i++){ const a=xs[i], b=ys[i]; sx+=a; sy+=b; sxx+=a*a; syy+=b*b; sxy+=a*b; }
+  const cov = sxy - sx*sy/n;
+  const vx = sxx - sx*sx/n, vy = syy - sy*sy/n;
+  if (vx <= 0 || vy <= 0) return 0;
+  return cov / Math.sqrt(vx*vy);
+}
+function computeCorrelations(r){
+  const found = [];
+  const seen = new Set();
+  for (const [ka, sa, kb, sb] of CORR_PAIRS){
+    const key = [ka,kb].sort().join("|");
+    if (seen.has(key)) continue;
+    const A = r[sa], B = r[sb];
+    if (!A || !B || !A.x || !B.x) continue;
+    const mapA = _seriesToDayMap(A), mapB = _seriesToDayMap(B);
+    if (!mapA.size || !mapB.size) continue;
+    const xs = [], ys = [];
+    for (const [day, va] of mapA){ if (mapB.has(day)){ xs.push(va); ys.push(mapB.get(day)); } }
+    if (xs.length < CORR_MIN_DAYS) continue;
+    const r0 = _pearson(xs, ys);
+    if (Math.abs(r0) < CORR_MIN_R) continue;
+    seen.add(key);
+    found.push({ a:ka, b:kb, r:r0, n:xs.length, xs, ys });
+  }
+  found.sort((p,q)=> Math.abs(q.r) - Math.abs(p.r));
+  return found;
+}
+
+function renderCorrelations(r){
+  const sec = document.getElementById("patternsSec");
+  const list = document.getElementById("corrList");
+  const chartCard = document.getElementById("corrChartCard");
+  const found = computeCorrelations(r);
+  if (!found.length){ sec.style.display = "none"; return; }
+  sec.style.display = "";
+
+  list.innerHTML = found.map(f=>{
+    const a = t("corr.m."+f.a), b = t("corr.m."+f.b);
+    const dir = f.r >= 0 ? t("corr.higher") : t("corr.lower");
+    const sentence = tf("corr.sentence", {a, b, dir});
+    const pct = Math.round(Math.abs(f.r)*100);
+    return `<div class="corr">
+      <div class="corr-text">${sentence}</div>
+      <div class="corr-meta">
+        <span class="corr-bar"><i style="width:${pct}%"></i></span>
+        <span class="corr-r">r = ${(f.r>=0?"+":"")}${f.r.toFixed(2)}</span>
+      </div>
+      <div class="corr-meta">${tf("corr.meta",{n:fmtInt(f.n)})}</div>
+    </div>`;
+  }).join("");
+
+  // scatter for the single strongest pair
+  const top = found[0];
+  if (window.Plotly && top){
+    const a = t("corr.m."+top.a), b = t("corr.m."+top.b);
+    document.getElementById("corrChartSub").textContent = tf("corr.chartSub", {a, b});
+    chartCard.style.display = "";
+    const lay = baseLayout(b);
+    lay.hovermode = "closest";
+    lay.xaxis.title = {text:a, font:{size:12}};
+    Plotly.newPlot("corrChart", [{
+      type:"scattergl", mode:"markers", x:top.xs, y:top.ys,
+      marker:{color:"rgba(250,60,76,0.45)", size:6},
+      hovertemplate:"%{x}<br>%{y}<extra></extra>",
+    }], lay, PLOT_CFG);
+  } else {
+    chartCard.style.display = "none";
+  }
 }
 
 const COL = {accent:"#fa3c4c", blue:"#2e7fff", green:"#34c759", purple:"#8a5cf6", orange:"#ff9f0a", grid:"#e9edf2", ink:"#1d1d1f"};
@@ -2173,6 +2328,11 @@ function buildHealthSummary(){
   if (recs.busiestWorkoutMonth) lines.push("Most workouts in a month: " + recs.busiestWorkoutMonth.count + " (" + recs.busiestWorkoutMonth.month + ")");
   if (recs.bestSleep) lines.push("Best night's sleep: " + recs.bestSleep.hours + " h on " + recs.bestSleep.date);
   if (recs.lowestRhr) lines.push("Lowest resting heart rate: " + recs.lowestRhr.bpm + " bpm on " + recs.lowestRhr.date);
+  // top cross-metric patterns (associations only)
+  const corrs = computeCorrelations(LAST_RESULT).slice(0, 3);
+  corrs.forEach(f=>{
+    lines.push("Pattern: " + f.a + " vs " + f.b + " correlate r=" + f.r.toFixed(2) + " (n=" + f.n + " days)");
+  });
   return lines.join("\n");
 }
 
