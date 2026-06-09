@@ -581,6 +581,10 @@ const I18N = {
     "chart.sleep.sub": "Hours asleep per night",
     "chart.workouts.title": "Workouts by month",
     "chart.workouts.sub": "Number of recorded workouts per month",
+    "chart.weekday.title": "Weekly rhythm",
+    "chart.weekday.sub": "Average steps by day of the week",
+    "ins.wk": "You move most on {top} ({topv} steps on average) and least on {low} ({lowv}).",
+    "wk.mon": "Mon", "wk.tue": "Tue", "wk.wed": "Wed", "wk.thu": "Thu", "wk.fri": "Fri", "wk.sat": "Sat", "wk.sun": "Sun",
     "axis.steps": "Steps",
     "axis.distance": "Distance (km)",
     "axis.bpm": "Beats / min",
@@ -715,6 +719,10 @@ const I18N = {
     "chart.sleep.sub": "每晚的睡眠小时数",
     "chart.workouts.title": "每月训练",
     "chart.workouts.sub": "每月记录的训练次数",
+    "chart.weekday.title": "每周节奏",
+    "chart.weekday.sub": "按星期几统计的平均步数",
+    "ins.wk": "你在{top}最活跃（平均 {topv} 步），在{low}最少（{lowv} 步）。",
+    "wk.mon": "周一", "wk.tue": "周二", "wk.wed": "周三", "wk.thu": "周四", "wk.fri": "周五", "wk.sat": "周六", "wk.sun": "周日",
     "axis.steps": "步数",
     "axis.distance": "距离（公里）",
     "axis.bpm": "次/分",
@@ -1595,6 +1603,33 @@ function fillInsight(id, text){
   if (el) el.textContent = text;
 }
 
+/* --- weekly rhythm: average steps by day of week --------------------------
+   Derived from the daily step series. Monday-first labels. Returns null when
+   there isn't enough data to be meaningful.
+   ------------------------------------------------------------------------- */
+const WEEKDAY_KEYS = ["wk.mon","wk.tue","wk.wed","wk.thu","wk.fri","wk.sat","wk.sun"];
+function computeWeekday(r){
+  const sd = r.steps_daily;
+  if (!sd || !sd.x.length) return null;
+  const sum = [0,0,0,0,0,0,0], cnt = [0,0,0,0,0,0,0];
+  for (let i=0;i<sd.x.length;i++){
+    const d = String(sd.x[i]); if (d.length !== 10) continue;
+    // Monday-first index: JS getUTCDay() is 0=Sun..6=Sat
+    const js = new Date(d + "T00:00:00Z").getUTCDay();
+    const idx = (js + 6) % 7;
+    sum[idx] += sd.y[i]; cnt[idx]++;
+  }
+  const total = cnt.reduce((a,b)=>a+b,0);
+  if (total < 14) return null; // need at least a couple of weeks
+  const avg = sum.map((s,i)=> cnt[i] ? s/cnt[i] : 0);
+  let maxIdx = 0, minIdx = 0;
+  for (let i=1;i<7;i++){
+    if (avg[i] > avg[maxIdx]) maxIdx = i;
+    if (cnt[i] && (avg[i] < avg[minIdx] || !cnt[minIdx])) minIdx = i;
+  }
+  return { avg, cnt, maxIdx, minIdx };
+}
+
 function renderCharts(r){
   if (!window.Plotly) return;   // charts render once Plotly is loaded on demand
   const grid = document.getElementById("chartGrid");
@@ -1605,6 +1640,8 @@ function renderCharts(r){
   if (r.hrv.x.length) blocks.push(card("c_hrv","chart.hrv.title","chart.hrv.sub","i_hrv"));
   if (r.sleep.x.length) blocks.push(card("c_sleep","chart.sleep.title","chart.sleep.sub","i_sleep"));
   if (r.workouts_month.x.length) blocks.push(card("c_wo","chart.workouts.title","chart.workouts.sub","i_wo"));
+  const wk = computeWeekday(r);
+  if (wk) blocks.push(card("c_wk","chart.weekday.title","chart.weekday.sub","i_wk"));
   grid.innerHTML = blocks.join("");
 
   if (r.steps_daily.x.length){
@@ -1672,6 +1709,20 @@ function renderCharts(r){
     const wmax = Math.max(...wy), wmonth = r.workouts_month.x[wy.indexOf(wmax)];
     fillInsight("i_wo", tf("ins.wo", {total:fmtInt(r.meta.workouts),
       avgmo:fmtInt(Math.round(_mean(wy))), month:wmonth, max:fmtInt(wmax)}));
+  }
+  if (wk){
+    const labels = WEEKDAY_KEYS.map(k=>t(k));
+    const top = COL.accent, lo = "rgba(250,60,76,0.18)";
+    const maxv = Math.max(...wk.avg);
+    const colors = wk.avg.map(v => maxv>0 && v === maxv ? top : lo);
+    Plotly.newPlot("c_wk", [
+      {type:"bar", x:labels, y:wk.avg, marker:{color:colors},
+       hovertemplate:"%{x}<br>%{y:,.0f}<extra></extra>"}
+    ], baseLayout(t("axis.steps")), PLOT_CFG);
+    fillInsight("i_wk", tf("ins.wk", {
+      top:t(WEEKDAY_KEYS[wk.maxIdx]), topv:fmtInt(Math.round(wk.avg[wk.maxIdx])),
+      low:t(WEEKDAY_KEYS[wk.minIdx]), lowv:fmtInt(Math.round(wk.avg[wk.minIdx])),
+    }));
   }
 }
 
