@@ -642,6 +642,8 @@ const I18N = {
     "recap.movement": "Your movement",
     "recap.heartSleep": "Heart & sleep",
     "recap.records": "Highlights",
+    "recap.peak": "Peak",
+    "recap.dailyAvg": "30-day average",
     "kpi.dateRange": "Date range",
     "kpi.records": "Health records",
     "kpi.totalSteps": "Total steps",
@@ -821,6 +823,8 @@ const I18N = {
     "recap.movement": "你的运动",
     "recap.heartSleep": "心脏与睡眠",
     "recap.records": "亮点",
+    "recap.peak": "峰值",
+    "recap.dailyAvg": "30 天平均",
     "kpi.dateRange": "数据日期范围",
     "kpi.records": "健康记录数",
     "kpi.totalSteps": "总步数",
@@ -2496,13 +2500,23 @@ function _fillTiles(ctx, tiles, yTop, yBottom){
     const x = oddLast ? PAD : PAD + col*(tw+GAP);
     const w = oddLast ? CW : tw;
     const ty = y0 + row*(th+GAP);
+    const sub = tl[2];
     _roundRect(ctx, x, ty, w, th, 24); ctx.fillStyle = "#ffffff"; ctx.fill();
     ctx.strokeStyle = "rgba(0,0,0,.07)"; ctx.lineWidth = 1; ctx.stroke();
     ctx.textAlign = "left";
-    ctx.fillStyle = RC_MUTED; ctx.font = "30px " + RECAP_FAM;
-    ctx.fillText(_fit(ctx, tl[0], w-60), x+34, ty + th/2 - 56);
-    ctx.fillStyle = RC_INK; ctx.font = "700 72px " + RECAP_FAM;
-    ctx.fillText(_fit(ctx, tl[1], w-60), x+34, ty + th/2 - 6);
+    if (sub){
+      ctx.fillStyle = RC_MUTED; ctx.font = "30px " + RECAP_FAM;
+      ctx.fillText(_fit(ctx, tl[0], w-60), x+34, ty + th/2 - 82);
+      ctx.fillStyle = RC_INK; ctx.font = "700 70px " + RECAP_FAM;
+      ctx.fillText(_fit(ctx, tl[1], w-60), x+34, ty + th/2 - 38);
+      ctx.fillStyle = RC_ACCENT; ctx.font = "600 26px " + RECAP_FAM;
+      ctx.fillText(_fit(ctx, sub, w-60), x+34, ty + th/2 + 44);
+    } else {
+      ctx.fillStyle = RC_MUTED; ctx.font = "30px " + RECAP_FAM;
+      ctx.fillText(_fit(ctx, tl[0], w-60), x+34, ty + th/2 - 56);
+      ctx.fillStyle = RC_INK; ctx.font = "700 72px " + RECAP_FAM;
+      ctx.fillText(_fit(ctx, tl[1], w-60), x+34, ty + th/2 - 6);
+    }
   });
 }
 // Full-width stat row: label left, big value right, vertically centred.
@@ -2516,14 +2530,29 @@ function _statRow(ctx, label, value, x, y, w, h){
   ctx.fillText(_fit(ctx, String(value), w*0.42), x+w-36, y+h/2);
   ctx.textBaseline = "top"; ctx.textAlign = "left";
 }
-// Titled visual panel (bars or sparkline) filling [yTop,yBottom].
-function _vizPanel(ctx, title, kind, vals, yTop, yBottom, color){
+// Titled visual panel (bars or sparkline) filling [yTop,yBottom], with a peak
+// value label and first/last x-axis labels so the numbers are legible.
+function _vizPanel(ctx, title, kind, series, yTop, yBottom, color){
   const PAD = RECAP_PAD, CW = RECAP_W - PAD*2;
+  const vals = series.y, xs = series.x || [];
   ctx.textAlign = "left"; ctx.fillStyle = RC_INK; ctx.font = "600 36px " + RECAP_FAM;
   ctx.fillText(title, PAD, yTop);
-  const gTop = yTop + 60, gh = yBottom - gTop;
+  // peak value, top-right
+  const [lo, hi] = _minMax(vals);
+  ctx.textAlign = "right"; ctx.fillStyle = RC_MUTED; ctx.font = "28px " + RECAP_FAM;
+  const peakTxt = t("recap.peak") + " " + fmtInt(Math.round(hi));
+  ctx.fillText(peakTxt, PAD + CW, yTop + 6);
+  // graph area leaves room for x labels at the bottom
+  const gTop = yTop + 64, gBot = yBottom - 40, gh = gBot - gTop;
   if (kind === "bars") _miniBars(ctx, vals, PAD, gTop, CW, gh, color);
   else _sparkline(ctx, vals, PAD, gTop, CW, gh, color, "rgba(250,60,76,0.10)");
+  // x-axis range labels (first / last)
+  if (xs.length){
+    ctx.fillStyle = RC_MUTED; ctx.font = "24px " + RECAP_FAM;
+    ctx.textAlign = "left"; ctx.fillText(String(xs[0]), PAD, gBot + 8);
+    ctx.textAlign = "right"; ctx.fillText(String(xs[xs.length-1]), PAD + CW, gBot + 8);
+  }
+  ctx.textAlign = "left";
 }
 
 function buildRecapSlides(){
@@ -2548,7 +2577,13 @@ function buildRecapSlides(){
     ctx.fillStyle = "#fff"; ctx.font = "700 148px " + RECAP_FAM;
     ctx.fillText(_fit(ctx, fmtInt(m.total_steps), CW-80), RECAP_W/2, y+120);
     const spark = (r.steps_daily.roll && r.steps_daily.roll.length>1) ? r.steps_daily.roll : r.steps_daily.y;
-    _sparkline(ctx, spark, PAD+50, y+346, CW-100, 178, "rgba(255,255,255,.95)", "rgba(255,255,255,.20)");
+    _sparkline(ctx, spark, PAD+50, y+346, CW-100, 150, "rgba(255,255,255,.95)", "rgba(255,255,255,.20)");
+    // label the sparkline so the line has meaning
+    const sPeak = Math.round(_minMax(spark)[1]);
+    ctx.textAlign = "left"; ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.font = "600 26px " + RECAP_FAM;
+    ctx.fillText(t("recap.dailyAvg"), PAD+50, y+516);
+    ctx.textAlign = "right";
+    ctx.fillText(t("recap.peak") + " " + fmtInt(sPeak), PAD+CW-50, y+516);
 
     const rowsTop = y + heroH + 44, rows = [
       [t("card.distance"), fmtInt(Math.round(m.total_distance)) + " " + t("kpi.km")],
@@ -2574,7 +2609,7 @@ function buildRecapSlides(){
     }
     const dm = r.monthly_distance, hasBars = dm.y && dm.y.length;
     _fillTiles(ctx, tiles, y, hasBars ? 1160 : RECAP_FOOT);
-    if (hasBars) _vizPanel(ctx, t("chart.dist.title"), "bars", dm.y, 1230, RECAP_FOOT, RC_ACCENT);
+    if (hasBars) _vizPanel(ctx, t("chart.dist.title"), "bars", dm, 1230, RECAP_FOOT, RC_ACCENT);
     slides.push({ cv });
   }
 
@@ -2590,27 +2625,25 @@ function buildRecapSlides(){
       const { cv, ctx } = _newSlide();
       const y = _slideHeader(ctx, t("recap.heartSleep")) + 24;
       let viz = null, vt = "";
-      if (r.sleep && r.sleep.y.length > 1){ viz = r.sleep.y; vt = t("chart.sleep.title"); }
-      else if (r.resting_hr && r.resting_hr.y.length > 1){ viz = r.resting_hr.y; vt = t("chart.rhr.title"); }
-      else if (r.hrv && r.hrv.y.length > 1){ viz = r.hrv.y; vt = t("chart.hrv.title"); }
+      if (r.sleep && r.sleep.y.length > 1){ viz = r.sleep; vt = t("chart.sleep.title"); }
+      else if (r.resting_hr && r.resting_hr.y.length > 1){ viz = r.resting_hr; vt = t("chart.rhr.title"); }
+      else if (r.hrv && r.hrv.y.length > 1){ viz = r.hrv; vt = t("chart.hrv.title"); }
       _fillTiles(ctx, tiles, y, viz ? 1160 : RECAP_FOOT);
       if (viz) _vizPanel(ctx, vt, "spark", viz, 1230, RECAP_FOOT, RC_ACCENT);
       slides.push({ cv });
     }
   }
 
-  // ---- Slide 4: highlights — records tiles + route outline (or fallback) ----
+  // ---- Slide 4: highlights — records tiles (with dates) + route outline ----
   {
-    const sy = r.steps_daily.y;
-    let bestVal = 0; for (let i=0;i<sy.length;i++) if (sy[i] > bestVal) bestVal = sy[i];
     const recs = computeRecords(r);
     const hero = _pickHeroRoute(r.routes || []);
     const tiles = [];
-    if (bestVal > 0) tiles.push([t("card.bestDay"), fmtInt(bestVal)]);
-    if (recs.longestStreak) tiles.push([t("rec.longestStreak"), tf("rec.days",{n:fmtInt(recs.longestStreak.days)})]);
-    if (recs.bestStepMonth) tiles.push([t("rec.bestStepMonth"), fmtInt(recs.bestStepMonth.steps)]);
-    if (recs.bestSleep) tiles.push([t("rec.bestSleep"), tf("rec.hours",{n:recs.bestSleep.hours})]);
-    if (recs.lowestRhr) tiles.push([t("rec.lowestRhr"), fmtInt(recs.lowestRhr.bpm) + " " + t("kpi.bpm")]);
+    if (recs.bestStepDay) tiles.push([t("card.bestDay"), fmtInt(recs.bestStepDay.steps), recs.bestStepDay.date]);
+    if (recs.longestStreak) tiles.push([t("rec.longestStreak"), tf("rec.days",{n:fmtInt(recs.longestStreak.days)}), recs.longestStreak.end]);
+    if (recs.bestStepMonth) tiles.push([t("rec.bestStepMonth"), fmtInt(recs.bestStepMonth.steps), recs.bestStepMonth.month]);
+    if (recs.bestSleep) tiles.push([t("rec.bestSleep"), tf("rec.hours",{n:recs.bestSleep.hours}), recs.bestSleep.date]);
+    if (recs.lowestRhr) tiles.push([t("rec.lowestRhr"), fmtInt(recs.lowestRhr.bpm) + " " + t("kpi.bpm"), recs.lowestRhr.date]);
     if (tiles.length || hero){
       const { cv, ctx } = _newSlide();
       const y = _slideHeader(ctx, t("recap.records")) + 24;
@@ -2621,7 +2654,7 @@ function buildRecapSlides(){
         ctx.textAlign = "left"; ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 30px " + RECAP_FAM;
         ctx.fillText(t("card.longestRoute").toUpperCase(), PAD+36, rpTop+30);
         ctx.fillStyle = "#fff"; ctx.font = "700 50px " + RECAP_FAM;
-        ctx.fillText((Math.round(hero.km*10)/10) + " " + t("kpi.km"), PAD+36, rpTop+74);
+        ctx.fillText(_fit(ctx, (Math.round(hero.km*10)/10) + " " + t("kpi.km") + "  ·  " + hero.route.name, CW-72), PAD+36, rpTop+74);
         _drawRouteOutline(ctx, hero.route.pts, PAD+36, rpTop+158, CW-72, bh-188, "#ff7a52");
       } else {
         _fillTiles(ctx, tiles, y, RECAP_FOOT);
@@ -2740,11 +2773,18 @@ function closeRecap(){
 function _recapSaveOne(){
   _recapSlides[_recapIdx].cv.toBlob(b=> _download(b, _cardName(_recapIdx)), "image/png");
 }
-function _recapSaveAll(){
-  // sequential downloads (no zip) — staggered so browsers don't drop them
-  _recapSlides.forEach((s, i)=>{
-    setTimeout(()=> s.cv.toBlob(b=> _download(b, _cardName(i)), "image/png"), i*350);
-  });
+async function _recapSaveAll(){
+  // sequential downloads (no zip): generate + save one at a time, spaced out so
+  // the browser keeps the user gesture and doesn't drop later files.
+  const btn = document.getElementById("recapSaveAll");
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = t("report.generating");
+  for (let i=0;i<_recapSlides.length;i++){
+    const blob = await new Promise(res=> _recapSlides[i].cv.toBlob(res, "image/png"));
+    _download(blob, _cardName(i));
+    await new Promise(res=> setTimeout(res, 600));
+  }
+  btn.disabled = false; btn.textContent = label;
 }
 document.getElementById("recapClose").addEventListener("click", closeRecap);
 recapOverlay.addEventListener("click", e=>{ if(e.target===recapOverlay) closeRecap(); });
