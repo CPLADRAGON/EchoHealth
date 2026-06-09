@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#f5f5f7" />
 <title>EchoHealth · 回声健康</title>
+<script>
+  // Set the theme before first paint to avoid a flash of the wrong mode.
+  (function(){
+    try{
+      var th = localStorage.getItem("ah_theme");
+      if (!th) th = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", th);
+      document.documentElement.style.colorScheme = th;
+    }catch(e){}
+  })();
+</script>
 <link rel="preconnect" href="https://cdn.plot.ly" crossorigin />
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
 <link rel="dns-prefetch" href="https://generativelanguage.googleapis.com" />
@@ -16,6 +27,16 @@
     --accent:#fa3c4c; --blue:#2e7fff; --green:#34c759; --purple:#8a5cf6; --orange:#ff9f0a;
     --grid:#e9edf2; --ink:#1d1d1f; --muted:#6e6e73;
     --parchment:#f5f5f7; --hairline:rgba(0,0,0,.10); --canvas:#fff;
+    --accent-soft:rgba(250,60,76,.07); --map-bg:#eef1f4;
+    --chart-bg:#ffffff; --chart-grid:#e9edf2; --chart-ink:#1d1d1f;
+    --code-bg:rgba(0,0,0,.06);
+  }
+  [data-theme="dark"]{
+    --grid:#2c2c2e; --ink:#f2f2f7; --muted:#9a9aa2;
+    --parchment:#000000; --hairline:rgba(255,255,255,.14); --canvas:#1c1c1e;
+    --accent-soft:rgba(250,60,76,.16); --map-bg:#2c2c2e;
+    --chart-bg:#1c1c1e; --chart-grid:#2c2c2e; --chart-ink:#f2f2f7;
+    --code-bg:rgba(255,255,255,.12);
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -52,13 +73,21 @@
     padding:8px 4px;font-family:inherit;
   }
   .howlink:hover{text-decoration:underline}
+  /* theme toggle */
+  .theme-btn{
+    display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;
+    border:1px solid var(--hairline);border-radius:9999px;background:var(--canvas);
+    color:var(--ink);cursor:pointer;padding:0;font-family:inherit;
+  }
+  .theme-btn:hover{border-color:var(--accent)}
+  .theme-btn svg{width:18px;height:18px;display:block}
   /* language segmented control */
   .lang{display:inline-flex;border:1px solid var(--hairline);border-radius:9999px;overflow:hidden;background:var(--canvas)}
   .lang button{
     border:none;background:none;font-family:inherit;font-size:13px;font-weight:500;
     padding:7px 14px;cursor:pointer;color:var(--muted);
   }
-  .lang button.active{background:var(--ink);color:#fff}
+  .lang button.active{background:var(--ink);color:var(--canvas)}
 
   /* ---- privacy strip ---- */
   .privacy-strip{
@@ -73,11 +102,11 @@
     background:var(--canvas);border:1.5px dashed var(--hairline);border-radius:18px;
     padding:54px 28px;text-align:center;transition:border-color .15s,background .15s;cursor:pointer;
   }
-  .drop.drag{border-color:var(--accent);background:#fff7f7}
+  .drop.drag{border-color:var(--accent);background:var(--accent-soft)}
   .drop h2{margin:0 0 8px;font-size:21px;font-weight:600;letter-spacing:-.3px}
   .drop p{margin:0 auto;max-width:460px;color:var(--muted);font-size:15px}
   .drop .btn{
-    display:inline-block;margin-top:22px;background:var(--ink);color:#fff;border:none;
+    display:inline-block;margin-top:22px;background:var(--ink);color:var(--canvas);border:none;
     border-radius:9999px;padding:12px 26px;font-size:15px;font-weight:500;cursor:pointer;font-family:inherit;
   }
   .drop .formats{margin-top:16px;font-size:12.5px;color:var(--muted)}
@@ -86,7 +115,7 @@
   /* ---- error banner ---- */
   .errbar{
     display:flex;align-items:flex-start;gap:12px;
-    background:#fff4f4;border:1px solid rgba(250,60,76,.35);border-radius:14px;
+    background:var(--accent-soft);border:1px solid rgba(250,60,76,.35);border-radius:14px;
     padding:13px 14px 13px 16px;margin-bottom:20px;
   }
   .errbar-msg{flex:1;min-width:0;font-size:14px;line-height:1.5;color:var(--ink);word-wrap:break-word}
@@ -126,8 +155,8 @@
   }
   .exp-btn:hover{border-color:var(--accent)}
   .exp-btn:disabled{opacity:.55;cursor:default}
-  .exp-btn.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .exp-btn.primary:hover{background:#000;border-color:#000}
+  .exp-btn.primary{background:var(--ink);color:var(--canvas);border-color:var(--ink)}
+  .exp-btn.primary:hover{opacity:.88;border-color:var(--ink)}
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:30px 0 8px}
   .kpi{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:18px 18px 16px}
   .kpi-lab{font-size:12.5px;color:var(--muted);font-weight:500}
@@ -167,7 +196,7 @@
     font-family:inherit;font-size:13px;color:var(--ink);background-color:var(--canvas);
     border:1px solid var(--hairline);border-radius:9999px;padding:8px 14px;cursor:pointer;max-width:260px;
   }
-  #routeMap{width:100%;height:420px;border-radius:14px;overflow:hidden;background:#eef1f4}
+  #routeMap{width:100%;height:420px;border-radius:14px;overflow:hidden;background:var(--map-bg)}
   .map-foot{margin:10px 2px 0;font-size:12px;line-height:1.6;color:var(--muted)}
   .map-hint{
     display:flex;align-items:center;justify-content:center;min-height:140px;text-align:center;
@@ -193,11 +222,11 @@
   .ai-msg{font-size:14px;line-height:1.6;padding:10px 13px;border-radius:14px;max-width:88%;white-space:pre-wrap;word-wrap:break-word}
   .ai-msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
   .ai-msg.bot{align-self:flex-start;background:var(--parchment);color:var(--ink);border-bottom-left-radius:5px}
-  .ai-msg.bot.err{background:#fff4f4;color:var(--accent);border:1px solid var(--hairline)}
+  .ai-msg.bot.err{background:var(--accent-soft);color:var(--accent);border:1px solid var(--hairline)}
   .ai-msg.bot p{margin:0 0 6px}
   .ai-msg.bot ul{margin:6px 0;padding-left:20px}
   .ai-msg.bot li{margin:2px 0}
-  .ai-msg.bot code{background:rgba(0,0,0,.06);border-radius:4px;padding:1px 5px;font-size:12.5px}
+  .ai-msg.bot code{background:var(--code-bg);border-radius:4px;padding:1px 5px;font-size:12.5px}
   .ai-msg.bot strong{font-weight:600}
   .ai-chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
   .ai-chip{
@@ -250,11 +279,11 @@
   }
   ol.steps li::before{
     content:counter(s);position:absolute;left:0;top:-2px;width:26px;height:26px;border-radius:50%;
-    background:var(--ink);color:#fff;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;
+    background:var(--ink);color:var(--canvas);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;
   }
   ol.steps li b{font-weight:600}
   .modal .gotit{
-    margin-top:24px;width:100%;background:var(--ink);color:#fff;border:none;border-radius:12px;
+    margin-top:24px;width:100%;background:var(--ink);color:var(--canvas);border:none;border-radius:12px;
     padding:14px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;
   }
 
@@ -278,10 +307,10 @@
   }
   .pv-hint{font-size:12.5px;color:var(--muted);flex:1;min-width:0}
   .pv-save{
-    background:var(--ink);color:#fff;border:none;border-radius:12px;font-family:inherit;
+    background:var(--ink);color:var(--canvas);border:none;border-radius:12px;font-family:inherit;
     font-size:14px;font-weight:600;padding:11px 22px;cursor:pointer;white-space:nowrap;
   }
-  .pv-save:hover{background:#000}
+  .pv-save:hover{opacity:.88}
 
   @media (max-width:560px){
     .wrap{padding:0 18px}
@@ -334,6 +363,7 @@
     </div>
     <div class="head-actions">
       <button class="howlink" id="howBtn" data-i="nav.how"></button>
+      <button class="theme-btn" id="themeBtn" type="button" aria-label="Toggle dark mode"></button>
       <div class="lang" role="group" aria-label="Language">
         <button data-lang="en" translate="no">EN</button>
         <button data-lang="zh" translate="no">中文</button>
@@ -733,6 +763,39 @@ document.querySelectorAll(".lang button").forEach(b=>{
     localStorage.setItem("ah_lang", LANG);
     applyLang();
   });
+});
+
+/* =====================================================================
+   theme (light / dark)
+   ===================================================================== */
+const SUN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.2M12 19.8V22M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2 12h2.2M19.8 12H22M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg>';
+const MOON_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.8 6.8 0 0 0 9.8 9.8z"/></svg>';
+const THEME_BG = { light: "#f5f5f7", dark: "#000000" };
+
+let THEME = localStorage.getItem("ah_theme");
+if (!THEME){
+  THEME = (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
+}
+if (!["light","dark"].includes(THEME)) THEME = "light";
+
+function applyTheme(){
+  const dark = THEME === "dark";
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", dark ? THEME_BG.dark : THEME_BG.light);
+  const btn = document.getElementById("themeBtn");
+  if (btn){
+    btn.innerHTML = dark ? SUN_ICON : MOON_ICON;
+    btn.setAttribute("aria-pressed", dark ? "true" : "false");
+  }
+  // charts bake their colors at draw time — re-render so they match the theme
+  if (LAST_RESULT && window.Plotly) renderCharts(LAST_RESULT);
+}
+document.getElementById("themeBtn").addEventListener("click", ()=>{
+  THEME = THEME === "dark" ? "light" : "dark";
+  localStorage.setItem("ah_theme", THEME);
+  applyTheme();
 });
 
 /* =====================================================================
@@ -1326,11 +1389,16 @@ const COL = {accent:"#fa3c4c", blue:"#2e7fff", green:"#34c759", purple:"#8a5cf6"
 const FONT = {family:"-apple-system, Segoe UI, Roboto, sans-serif", color:COL.ink, size:12};
 
 function baseLayout(yTitle){
+  // read theme colors live so charts match light/dark
+  const cs = getComputedStyle(document.documentElement);
+  const bg = cs.getPropertyValue("--chart-bg").trim() || "#ffffff";
+  const grid = cs.getPropertyValue("--chart-grid").trim() || "#e9edf2";
+  const ink = cs.getPropertyValue("--chart-ink").trim() || "#1d1d1f";
   return {
-    font:FONT, paper_bgcolor:"white", plot_bgcolor:"white",
+    font:{family:FONT.family, color:ink, size:12}, paper_bgcolor:bg, plot_bgcolor:bg,
     margin:{l:58,r:18,t:10,b:40}, height:320, hovermode:"x unified",
-    xaxis:{gridcolor:COL.grid, zeroline:false},
-    yaxis:{gridcolor:COL.grid, zeroline:false, title:{text:yTitle, font:{size:12}}},
+    xaxis:{gridcolor:grid, zeroline:false},
+    yaxis:{gridcolor:grid, zeroline:false, title:{text:yTitle, font:{size:12}}},
     showlegend:false,
   };
 }
@@ -2202,6 +2270,7 @@ async function sendAi(question){
 /* =====================================================================
    init
    ===================================================================== */
+applyTheme();
 applyLang();
 if (!localStorage.getItem("ah_onboarded")) openModal();
 </script>
