@@ -134,6 +134,18 @@
   .kpi-val{font-size:26px;font-weight:600;letter-spacing:-.4px;margin-top:6px;font-variant-numeric:tabular-nums}
   .kpi-sub{font-size:12px;color:var(--muted);margin-top:2px}
 
+  /* ---- streaks & records ---- */
+  .records{margin:26px 0 0}
+  .records h3{margin:0 0 12px;font-size:17px;font-weight:600;letter-spacing:-.2px}
+  .rec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px}
+  .rec{
+    background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:16px 18px;
+    display:flex;flex-direction:column;gap:2px;
+  }
+  .rec-lab{font-size:12.5px;color:var(--muted);font-weight:500}
+  .rec-val{font-size:24px;font-weight:600;letter-spacing:-.4px;font-variant-numeric:tabular-nums}
+  .rec-sub{font-size:12px;color:var(--muted)}
+
   section.charts{padding:18px 0 10px}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:20px}
   .card{background:var(--canvas);border:1px solid var(--hairline);border-radius:18px;padding:18px 18px 8px;min-width:0}
@@ -371,6 +383,10 @@
       </span>
     </div>
     <div class="kpis" id="kpis"></div>
+    <section class="records" id="recordsSec" style="display:none">
+      <h3 data-i="rec.title"></h3>
+      <div class="rec-grid" id="recGrid"></div>
+    </section>
     <section class="charts">
       <div class="grid" id="chartGrid"></div>
     </section>
@@ -432,6 +448,16 @@ const I18N = {
     "results.reset": "Analyze another file",
     "filter.period": "Period",
     "filter.all": "All time",
+    "rec.title": "Streaks & records",
+    "rec.bestStepDay": "Best step day",
+    "rec.longestStreak": "Longest active streak",
+    "rec.currentStreak": "Current streak",
+    "rec.bestStepMonth": "Most steps in a month",
+    "rec.busiestWorkoutMonth": "Most workouts in a month",
+    "rec.bestSleep": "Best night’s sleep",
+    "rec.lowestRhr": "Lowest resting HR",
+    "rec.days": "{n} days",
+    "rec.hours": "{n} h",
     "report.savePng": "Save image",
     "report.savePdf": "Save PDF",
     "report.generating": "Preparing\u2026",
@@ -542,6 +568,16 @@ const I18N = {
     "results.reset": "分析另一个文件",
     "filter.period": "时间范围",
     "filter.all": "全部时间",
+    "rec.title": "连续记录与最佳成绩",
+    "rec.bestStepDay": "最多步数的一天",
+    "rec.longestStreak": "最长活跃连续",
+    "rec.currentStreak": "当前连续",
+    "rec.bestStepMonth": "步数最多的月份",
+    "rec.busiestWorkoutMonth": "锻炼最多的月份",
+    "rec.bestSleep": "睡得最好的一晚",
+    "rec.lowestRhr": "最低静息心率",
+    "rec.days": "{n} 天",
+    "rec.hours": "{n} 小时",
     "report.savePng": "保存图片",
     "report.savePdf": "保存 PDF",
     "report.generating": "正在生成\u2026",
@@ -687,7 +723,7 @@ function applyLang(){
     b.setAttribute("aria-pressed", on ? "true" : "false");
   });
   // re-render results if we already have data
-  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderCharts(LAST_RESULT); refreshRouteText(); refreshPeriodText(); }
+  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderRecords(LAST_RESULT); renderCharts(LAST_RESULT); refreshRouteText(); refreshPeriodText(); }
   renderAiStatic();
 }
 
@@ -1054,6 +1090,7 @@ async function handleFile(file){
     showStage("results");
     populatePeriodPicker(FULL_RESULT);
     renderKPIs(LAST_RESULT);
+    renderRecords(LAST_RESULT);
     await loadPlotly();
     renderCharts(LAST_RESULT);
     renderRoutes(LAST_RESULT);
@@ -1159,6 +1196,7 @@ function applyPeriod(){
   const yr = document.getElementById("periodPick").value;
   LAST_RESULT = (yr === "all") ? FULL_RESULT : filterResultByYear(FULL_RESULT, yr);
   renderKPIs(LAST_RESULT);
+  renderRecords(LAST_RESULT);
   renderCharts(LAST_RESULT);
   renderRoutes(LAST_RESULT);
 }
@@ -1190,6 +1228,97 @@ function renderKPIs(r){
       <div class="kpi-lab">${c.lab}</div>
       <div class="kpi-val">${c.val}</div>
       <div class="kpi-sub">${c.sub||"&nbsp;"}</div>
+    </div>`).join("");
+}
+
+/* --- streaks & records --------------------------------------------------
+   Personal bests derived from the already-computed daily/monthly series.
+   The active-day streak counts consecutive calendar days with steps > 0.
+   "Current streak" only shows under All time (it's anchored to the most
+   recent recorded day, which a single-year slice would misrepresent).
+   ----------------------------------------------------------------------- */
+function _dayStr(d){ return d instanceof Date ? d.toISOString().slice(0,10) : String(d); }
+function _streaks(days){
+  // days: sorted array of "YYYY-MM-DD" strings with activity
+  if (!days.length) return { longest:0, current:0, longestEnd:null };
+  const ms = d => Date.parse(d + "T00:00:00Z");
+  let longest = 1, run = 1, longestEnd = days[0];
+  for (let i=1;i<days.length;i++){
+    const gap = Math.round((ms(days[i]) - ms(days[i-1])) / 86400000);
+    if (gap === 1){ run++; if (run > longest){ longest = run; longestEnd = days[i]; } }
+    else if (gap > 1){ run = 1; }
+  }
+  // current streak: consecutive days ending on the last recorded day
+  let current = 1;
+  for (let i=days.length-1;i>0;i--){
+    const gap = Math.round((ms(days[i]) - ms(days[i-1])) / 86400000);
+    if (gap === 1) current++; else break;
+  }
+  return { longest, current, longestEnd };
+}
+function _argMax(x, y){
+  let bi = -1, bv = -Infinity;
+  for (let i=0;i<y.length;i++){ if (y[i] > bv){ bv = y[i]; bi = i; } }
+  return bi < 0 ? null : { x: x[bi], v: bv };
+}
+function _argMin(x, y){
+  let bi = -1, bv = Infinity;
+  for (let i=0;i<y.length;i++){ if (y[i] < bv){ bv = y[i]; bi = i; } }
+  return bi < 0 ? null : { x: x[bi], v: bv };
+}
+
+function renderRecords(r){
+  const sec = document.getElementById("recordsSec");
+  const grid = document.getElementById("recGrid");
+  const cards = [];
+
+  // best step day
+  const sd = r.steps_daily;
+  const activeDays = [];
+  for (let i=0;i<sd.x.length;i++){ if (sd.y[i] > 0) activeDays.push(sd.x[i]); }
+  const bestDay = _argMax(sd.x, sd.y);
+  if (bestDay && bestDay.v > 0)
+    cards.push({lab:t("rec.bestStepDay"), val:fmtInt(bestDay.v), sub:bestDay.x});
+
+  // streaks
+  if (activeDays.length){
+    const st = _streaks(activeDays);
+    if (st.longest > 1)
+      cards.push({lab:t("rec.longestStreak"), val:tf("rec.days",{n:fmtInt(st.longest)}), sub:st.longestEnd||""});
+    // current streak only meaningful for the full timeline
+    if (LAST_RESULT === FULL_RESULT && st.current > 1)
+      cards.push({lab:t("rec.currentStreak"), val:tf("rec.days",{n:fmtInt(st.current)}), sub:""});
+  }
+
+  // biggest step month (derive from daily steps)
+  const moSteps = new Map();
+  for (let i=0;i<sd.x.length;i++){ const mo = String(sd.x[i]).slice(0,7); moSteps.set(mo, (moSteps.get(mo)||0) + sd.y[i]); }
+  if (moSteps.size){
+    const mx = [...moSteps.keys()], my = mx.map(k=>moSteps.get(k));
+    const best = _argMax(mx, my);
+    if (best && best.v > 0) cards.push({lab:t("rec.bestStepMonth"), val:fmtInt(Math.round(best.v)), sub:best.x});
+  }
+
+  // busiest workout month
+  const wm = r.workouts_month;
+  const bw = _argMax(wm.x, wm.y);
+  if (bw && bw.v > 0) cards.push({lab:t("rec.busiestWorkoutMonth"), val:fmtInt(bw.v), sub:bw.x});
+
+  // best night's sleep
+  const bs = _argMax(r.sleep.x, r.sleep.y);
+  if (bs && bs.v > 0) cards.push({lab:t("rec.bestSleep"), val:tf("rec.hours",{n:(Math.round(bs.v*10)/10)}), sub:bs.x});
+
+  // lowest resting HR
+  const lr = _argMin(r.resting_hr.x, r.resting_hr.y);
+  if (lr && isFinite(lr.v)) cards.push({lab:t("rec.lowestRhr"), val:fmtInt(lr.v)+" "+t("kpi.bpm"), sub:lr.x});
+
+  if (!cards.length){ sec.style.display = "none"; return; }
+  sec.style.display = "";
+  grid.innerHTML = cards.map(c=>`
+    <div class="rec">
+      <div class="rec-lab">${c.lab}</div>
+      <div class="rec-val">${c.val}</div>
+      <div class="rec-sub">${c.sub||"&nbsp;"}</div>
     </div>`).join("");
 }
 
