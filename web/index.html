@@ -516,6 +516,7 @@ const I18N = {
     "rec.busiestWorkoutMonth": "Most workouts in a month",
     "rec.bestSleep": "Best night’s sleep",
     "rec.lowestRhr": "Lowest resting HR",
+    "rec.sleepConsistency": "Sleep consistency",
     "rec.days": "{n} days",
     "rec.hours": "{n} h",
     "corr.title": "Patterns in your data",
@@ -581,6 +582,10 @@ const I18N = {
     "chart.hrv.sub": "Daily HRV (SDNN) — a recovery signal",
     "chart.sleep.title": "Sleep duration",
     "chart.sleep.sub": "Hours asleep per night",
+    "chart.sleepStages.title": "Sleep stages",
+    "chart.sleepStages.sub": "Deep, core and REM hours per night",
+    "sl.deep": "Deep", "sl.core": "Core", "sl.rem": "REM", "sl.unspec": "Asleep",
+    "ins.sleepStages": "Your sleep consistency score is {cons}/100, based on how regular your bed and wake times are.",
     "chart.workouts.title": "Workouts by month",
     "chart.workouts.sub": "Number of recorded workouts per month",
     "chart.weekday.title": "Weekly rhythm",
@@ -679,6 +684,7 @@ const I18N = {
     "rec.busiestWorkoutMonth": "锻炼最多的月份",
     "rec.bestSleep": "睡得最好的一晚",
     "rec.lowestRhr": "最低静息心率",
+    "rec.sleepConsistency": "睡眠规律性",
     "rec.days": "{n} 天",
     "rec.hours": "{n} 小时",
     "corr.title": "你数据中的规律",
@@ -744,6 +750,10 @@ const I18N = {
     "chart.hrv.sub": "每日 HRV（SDNN）——恢复状态信号",
     "chart.sleep.title": "睡眠时长",
     "chart.sleep.sub": "每晚的睡眠小时数",
+    "chart.sleepStages.title": "睡眠阶段",
+    "chart.sleepStages.sub": "每晚的深度、核心与 REM 睡眠小时",
+    "sl.deep": "深度", "sl.core": "核心", "sl.rem": "REM", "sl.unspec": "睡眠",
+    "ins.sleepStages": "你的睡眠规律评分为 {cons}/100，基于你就寑和起床时间的规律性。",
     "chart.workouts.title": "每月训练",
     "chart.workouts.sub": "每月记录的训练次数",
     "chart.weekday.title": "每周节奏",
@@ -984,6 +994,7 @@ function newAgg(){
     day_steps: new Map(), day_dist: new Map(),
     day_energy: new Map(), day_flights: new Map(),
     rhr: new Map(), hrv: new Map(), sleep_night: new Map(),
+    sleep_stage: new Map(), sleep_bound: new Map(),
     weight: new Map(), vo2: new Map(), bp_sys: new Map(), bp_dia: new Map(),
     weight_unit: null, sex: null, meScanned: false,
     workouts_month: new Map(), workout_total: 0, rec: 0,
@@ -1056,6 +1067,24 @@ function handleTag(A, tag){
         if (hrs > 0 && hrs < 24){
           const night = e.slice(0,10);
           A.sleep_night.set(night, (A.sleep_night.get(night) || 0) + hrs);
+          // per-stage hours (newer exports split sleep into Core/Deep/REM)
+          let st = "unspec";
+          if (val.indexOf("Core") !== -1) st = "core";
+          else if (val.indexOf("Deep") !== -1) st = "deep";
+          else if (val.indexOf("REM") !== -1) st = "rem";
+          let sg = A.sleep_stage.get(night);
+          if (!sg){ sg = {core:0, deep:0, rem:0, unspec:0}; A.sleep_stage.set(night, sg); }
+          sg[st] += hrs;
+          // earliest onset / latest wake clock times for the consistency score
+          const onMs = naiveMs(s), wkMs = naiveMs(e);
+          const onClk = (+s.slice(11,13))*60 + (+s.slice(14,16));
+          const wkClk = (+e.slice(11,13))*60 + (+e.slice(14,16));
+          let bd = A.sleep_bound.get(night);
+          if (!bd){ A.sleep_bound.set(night, {onMs, onClk, wkMs, wkClk}); }
+          else {
+            if (onMs < bd.onMs){ bd.onMs = onMs; bd.onClk = onClk; }
+            if (wkMs > bd.wkMs){ bd.wkMs = wkMs; bd.wkClk = wkClk; }
+          }
         }
       }
     }
@@ -1083,6 +1112,22 @@ function finalize(A){
   const hrv_y = hrv_x.map(d => Math.round(avg(A.hrv.get(d)) * 10) / 10);
   const sl_x = [...A.sleep_night.keys()].sort();
   const sl_y = sl_x.map(d => Math.round(A.sleep_night.get(d) * 100) / 100);
+  // per-stage hours, aligned with sl_x (only meaningful when stages exist)
+  let hasStages = false;
+  const st_core=[], st_deep=[], st_rem=[], st_unspec=[];
+  for (const d of sl_x){
+    const sg = A.sleep_stage.get(d) || {core:0,deep:0,rem:0,unspec:0};
+    if (sg.core || sg.deep || sg.rem) hasStages = true;
+    st_core.push(Math.round(sg.core*100)/100);
+    st_deep.push(Math.round(sg.deep*100)/100);
+    st_rem.push(Math.round(sg.rem*100)/100);
+    st_unspec.push(Math.round(sg.unspec*100)/100);
+  }
+  // bed/wake clock times for the consistency score
+  const clk_on=[], clk_wk=[];
+  for (const d of sl_x){ const bd = A.sleep_bound.get(d); if (bd){ clk_on.push(bd.onClk); clk_wk.push(bd.wkClk); } }
+  const sleep_consistency = _sleepConsistency(clk_on, clk_wk);
+
   const wm_x = [...A.workouts_month.keys()].sort();
   const wm_y = wm_x.map(m => A.workouts_month.get(m));
 
@@ -1128,12 +1173,16 @@ function finalize(A){
       avg_resting_hr: avg_rhr,
       latest_vo2, fitness_age, sex: A.sex,
       weight_unit: A.weight_unit || "kg",
+      sleep_consistency,
     },
     steps_daily: { x: sdays, y: svals, roll },
     monthly_distance: { x: md_x, y: md_y },
     resting_hr: { x: rhr_x, y: rhr_y },
     hrv: { x: hrv_x, y: hrv_y },
     sleep: { x: sl_x, y: sl_y },
+    sleep_stages: hasStages ? { x: sl_x, core: st_core, deep: st_deep, rem: st_rem, unspec: st_unspec }
+                            : { x: [], core: [], deep: [], rem: [], unspec: [] },
+    sleep_clock: { x: sl_x, on: clk_on, wk: clk_wk },
     workouts_month: { x: wm_x, y: wm_y },
     weight: { x: wt_x, y: wt_y },
     vo2max: { x: vo_x, y: vo_y },
@@ -1154,6 +1203,26 @@ function _fitnessAge(vo2, sex){
   else { base = 45; rate = 0.375; }
   let age = 20 + (base - vo2) / rate;
   return Math.max(18, Math.min(90, Math.round(age)));
+}
+
+// Circular standard deviation (minutes) of a list of clock minutes-of-day.
+// Clock times wrap at midnight, so we average them as angles.
+function _circStdevMin(arr){
+  if (!arr || arr.length < 3) return null;
+  let sc = 0, ss = 0;
+  for (const mn of arr){ const a = mn/1440*2*Math.PI; sc += Math.cos(a); ss += Math.sin(a); }
+  const n = arr.length;
+  const R = Math.sqrt((sc/n)**2 + (ss/n)**2);
+  if (R <= 1e-9) return 720;
+  return Math.sqrt(-2*Math.log(R)) * 1440/(2*Math.PI);
+}
+// Sleep consistency: how regular bed/wake clock times are, mapped to 0–100.
+// Lower variability in onset & wake times → higher score.
+function _sleepConsistency(onArr, wkArr){
+  const so = _circStdevMin(onArr), sw = _circStdevMin(wkArr);
+  if (so == null || sw == null) return null;
+  const avg = (so + sw) / 2;
+  return Math.max(0, Math.min(100, Math.round(100 - avg/1.5)));
 }
 
 // ---- GPS route helpers (workout-routes/*.gpx inside export.zip) ----
@@ -1414,6 +1483,26 @@ function filterResultByYear(r, year){
   const hrv   = pick(r.hrv, false);
   const sleep = pick(r.sleep, false);
   const wo    = pick(r.workouts_month, false);
+  // sleep stages: slice each stage array by night year
+  const ss = { x:[], core:[], deep:[], rem:[], unspec:[] };
+  if (r.sleep_stages && r.sleep_stages.x.length){
+    for (let i=0;i<r.sleep_stages.x.length;i++){
+      if (String(r.sleep_stages.x[i]).slice(0,4) === year){
+        ss.x.push(r.sleep_stages.x[i]);
+        ss.core.push(r.sleep_stages.core[i]);
+        ss.deep.push(r.sleep_stages.deep[i]);
+        ss.rem.push(r.sleep_stages.rem[i]);
+        ss.unspec.push(r.sleep_stages.unspec[i]);
+      }
+    }
+  }
+  // sleep clock times for consistency recompute
+  const clOn=[], clWk=[];
+  if (r.sleep_clock){
+    for (let i=0;i<r.sleep_clock.x.length;i++){
+      if (String(r.sleep_clock.x[i]).slice(0,4) === year){ clOn.push(r.sleep_clock.on[i]); clWk.push(r.sleep_clock.wk[i]); }
+    }
+  }
   const weight = r.weight ? pick(r.weight, false) : {x:[],y:[]};
   const vo2max = r.vo2max ? pick(r.vo2max, false) : {x:[],y:[]};
   const flights_month = r.flights_month ? pick(r.flights_month, false) : {x:[],y:[]};
@@ -1445,9 +1534,11 @@ function filterResultByYear(r, year){
       avg_resting_hr: rhr.y.length ? Math.round(sum(rhr.y)/rhr.y.length) : null,
       latest_vo2, fitness_age: _fitnessAge(latest_vo2, r.meta.sex), sex: r.meta.sex,
       weight_unit: r.meta.weight_unit || "kg",
+      sleep_consistency: _sleepConsistency(clOn, clWk),
     },
     steps_daily: steps, monthly_distance: dist, resting_hr: rhr,
     hrv, sleep, workouts_month: wo, routes,
+    sleep_stages: ss, sleep_clock: { x: ss.x.length ? ss.x : sleep.x, on: clOn, wk: clWk },
     weight, vo2max, blood_pressure: bp, flights_month, energy_month,
   };
 }
@@ -1573,6 +1664,8 @@ function renderRecords(r){
     cards.push({lab:t("rec.bestSleep"), val:tf("rec.hours",{n:recs.bestSleep.hours}), sub:recs.bestSleep.date});
   if (recs.lowestRhr)
     cards.push({lab:t("rec.lowestRhr"), val:fmtInt(recs.lowestRhr.bpm)+" "+t("kpi.bpm"), sub:recs.lowestRhr.date});
+  if (recs.sleepConsistency)
+    cards.push({lab:t("rec.sleepConsistency"), val:fmtInt(recs.sleepConsistency.score)+" / 100", sub:""});
 
   if (!cards.length){ sec.style.display = "none"; return; }
   sec.style.display = "";
@@ -1619,6 +1712,8 @@ function computeRecords(r){
 
   const lr = _argMin(r.resting_hr.x, r.resting_hr.y);
   if (lr && isFinite(lr.v)) out.lowestRhr = { bpm: lr.v, date: lr.x };
+
+  if (r.meta && r.meta.sleep_consistency != null) out.sleepConsistency = { score: r.meta.sleep_consistency };
 
   return out;
 }
@@ -1794,6 +1889,7 @@ function renderCharts(r){
   if (r.resting_hr.x.length) blocks.push(card("c_rhr","chart.rhr.title","chart.rhr.sub","i_rhr"));
   if (r.hrv.x.length) blocks.push(card("c_hrv","chart.hrv.title","chart.hrv.sub","i_hrv"));
   if (r.sleep.x.length) blocks.push(card("c_sleep","chart.sleep.title","chart.sleep.sub","i_sleep"));
+  if (r.sleep_stages && r.sleep_stages.x.length) blocks.push(card("c_slst","chart.sleepStages.title","chart.sleepStages.sub","i_slst"));
   if (r.workouts_month.x.length) blocks.push(card("c_wo","chart.workouts.title","chart.workouts.sub","i_wo"));
   const wk = computeWeekday(r);
   if (wk) blocks.push(card("c_wk","chart.weekday.title","chart.weekday.sub","i_wk"));
@@ -1859,6 +1955,20 @@ function renderCharts(r){
     const sl = r.sleep.y;
     const pct = sl.length ? Math.round(sl.filter(v=>v>=7).length / sl.length * 100) : 0;
     fillInsight("i_sleep", tf("ins.sleep", {avg:_mean(sl).toFixed(1), pct:pct}));
+  }
+  if (r.sleep_stages && r.sleep_stages.x.length){
+    const ss = r.sleep_stages;
+    Plotly.newPlot("c_slst", [
+      {type:"bar", x:ss.x, y:ss.deep, name:t("sl.deep"), marker:{color:"#3a4a8c"}, hovertemplate:"%{x}<br>%{y:.1f} h<extra></extra>"},
+      {type:"bar", x:ss.x, y:ss.core, name:t("sl.core"), marker:{color:COL.blue}, hovertemplate:"%{x}<br>%{y:.1f} h<extra></extra>"},
+      {type:"bar", x:ss.x, y:ss.rem, name:t("sl.rem"), marker:{color:COL.purple}, hovertemplate:"%{x}<br>%{y:.1f} h<extra></extra>"},
+      {type:"bar", x:ss.x, y:ss.unspec, name:t("sl.unspec"), marker:{color:"#9aa0a6"}, hovertemplate:"%{x}<br>%{y:.1f} h<extra></extra>"}
+    ], Object.assign(baseLayout(t("axis.hours")), {barmode:"stack", showlegend:true,
+       legend:{orientation:"h", y:1.12, x:0}}), PLOT_CFG);
+    const cons = r.meta.sleep_consistency;
+    fillInsight("i_slst", cons != null
+      ? tf("ins.sleepStages", {cons})
+      : t("chart.sleepStages.sub"));
   }
   if (r.workouts_month.x.length){
     Plotly.newPlot("c_wo", [
@@ -1964,7 +2074,7 @@ function loadJsPdf(){
 
 const CHART_EXPORT = [
   ["c_steps","i_steps"], ["c_dist","i_dist"], ["c_rhr","i_rhr"],
-  ["c_hrv","i_hrv"], ["c_sleep","i_sleep"], ["c_wo","i_wo"],
+  ["c_hrv","i_hrv"], ["c_sleep","i_sleep"], ["c_slst","i_slst"], ["c_wo","i_wo"],
   ["c_wk","i_wk"], ["c_wt","i_wt"], ["c_vo2","i_vo2"],
   ["c_bp","i_bp"], ["c_fl","i_fl"], ["c_en","i_en"],
 ];
@@ -2594,6 +2704,7 @@ function buildHealthSummary(){
     const ft = LAST_RESULT.flights_month.y.reduce((a,b)=>a+b,0);
     lines.push("Total flights of stairs climbed: " + ft);
   }
+  if (m.sleep_consistency != null) lines.push("Sleep consistency score: " + m.sleep_consistency + "/100");
   // attach the already-computed per-chart interpretations
   ["i_steps","i_dist","i_rhr","i_hrv","i_sleep","i_wo"].forEach(id=>{
     const el = document.getElementById(id);
