@@ -110,7 +110,15 @@
   /* ---- results ---- */
   .results{display:none}
   .results.show{display:block}
-  .results-bar{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;margin:24px 0 0}
+  .results-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:24px 0 0}
+  .results-actions{display:flex;gap:10px;flex-wrap:wrap}
+  .period-wrap{display:inline-flex;align-items:center;gap:8px}
+  .period-lab{font-size:13px;color:var(--muted);font-weight:500}
+  #periodPick{
+    font-family:inherit;font-size:13px;color:var(--ink);background-color:var(--canvas);
+    border:1px solid var(--hairline);border-radius:9999px;padding:9px 14px;cursor:pointer;
+  }
+  #periodPick:hover{border-color:var(--accent)}
   .exp-btn{
     display:inline-flex;align-items:center;gap:7px;background:var(--canvas);border:1px solid var(--hairline);
     border-radius:9999px;color:var(--ink);font-family:inherit;font-size:13px;font-weight:500;
@@ -350,8 +358,14 @@
   <!-- results -->
   <div class="results" id="results">
     <div class="results-bar">
-      <button class="exp-btn" id="savePng" data-i="report.savePng"></button>
-      <button class="exp-btn" id="savePdf" data-i="report.savePdf"></button>
+      <span class="period-wrap" id="periodWrap" style="display:none">
+        <label class="period-lab" for="periodPick" data-i="filter.period"></label>
+        <select id="periodPick"></select>
+      </span>
+      <span class="results-actions">
+        <button class="exp-btn" id="savePng" data-i="report.savePng"></button>
+        <button class="exp-btn" id="savePdf" data-i="report.savePdf"></button>
+      </span>
     </div>
     <div class="kpis" id="kpis"></div>
     <section class="charts">
@@ -413,6 +427,8 @@ const I18N = {
     "load.parse": "Reading and analyzing your health data…",
     "load.parseSmall": "Large exports can take a moment. Everything stays on your device.",
     "results.reset": "Analyze another file",
+    "filter.period": "Period",
+    "filter.all": "All time",
     "report.savePng": "Save image",
     "report.savePdf": "Save PDF",
     "report.generating": "Preparing\u2026",
@@ -460,6 +476,7 @@ const I18N = {
     "map.all": "All routes ({n})",
     "map.routeLabel": "Route",
     "map.noRoutes": "No route maps were found. Route data lives only inside <b>export.zip</b> (under <b>workout-routes</b>), not in <b>export.xml</b>. Re-run the export and upload the <b>.zip</b> to see your run maps here.",
+    "map.noRoutesPeriod": "No workout routes were recorded in this period.",
     "map.loadError": "The map library couldn't load. Check your connection and try again.",
     "map.privacy": "Routes can reveal your home and frequent locations — everything is drawn on your device and never uploaded. Map tiles are loaded from OpenStreetMap.",
     "footer.text": "EchoHealth · Runs locally in your browser · No account, no servers, no tracking.",
@@ -507,6 +524,8 @@ const I18N = {
     "load.parse": "正在读取并分析你的健康数据……",
     "load.parseSmall": "较大的导出文件可能需要一点时间。所有数据都保留在你的设备上。",
     "results.reset": "分析另一个文件",
+    "filter.period": "时间范围",
+    "filter.all": "全部时间",
     "report.savePng": "保存图片",
     "report.savePdf": "保存 PDF",
     "report.generating": "正在生成\u2026",
@@ -554,6 +573,7 @@ const I18N = {
     "map.all": "全部路线（{n}）",
     "map.routeLabel": "路线",
     "map.noRoutes": "未找到路线地图。路线数据只保存在 <b>export.zip</b> 中（位于 <b>workout-routes</b> 文件夹），<b>export.xml</b> 里没有。请重新导出并上传 <b>.zip</b> 文件，即可在此查看你的路线地图。",
+    "map.noRoutesPeriod": "此时间范围内没有运动路线记录。",
     "map.loadError": "地图组件加载失败。请检查网络后重试。",
     "map.privacy": "路线可能会暴露你的住址和常去地点——所有内容都在你的设备上绘制，绝不上传。地图瓦片来自 OpenStreetMap。",
     "footer.text": "回声健康 · 在你的浏览器本地运行 · 无账号、无服务器、无追踪。",
@@ -638,7 +658,7 @@ function applyLang(){
     b.setAttribute("aria-pressed", on ? "true" : "false");
   });
   // re-render results if we already have data
-  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderCharts(LAST_RESULT); refreshRouteText(); }
+  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderCharts(LAST_RESULT); refreshRouteText(); refreshPeriodText(); }
   renderAiStatic();
 }
 
@@ -958,7 +978,8 @@ async function parseHealthExport(file, onProgress){
 /* =====================================================================
    file handling + analysis
    ===================================================================== */
-let LAST_RESULT = null;
+let LAST_RESULT = null;   // the result currently shown (may be a filtered view)
+let FULL_RESULT = null;   // the unfiltered parse, source of truth for the period filter
 const drop = document.getElementById("drop");
 const loading = document.getElementById("loading");
 const results = document.getElementById("results");
@@ -993,14 +1014,16 @@ async function handleFile(file){
     const smallEl = document.getElementById("loadSmall");
     const baseSmall = t("load.parseSmall");
     let lastShown = -1;
-    LAST_RESULT = await parseHealthExport(file, frac=>{
+    FULL_RESULT = await parseHealthExport(file, frac=>{
       const pct = Math.min(99, Math.round(frac * 100));
       if (pct !== lastShown){
         lastShown = pct;
         smallEl.textContent = baseSmall + "  " + pct + "%";
       }
     });
+    LAST_RESULT = FULL_RESULT;
     showStage("results");
+    populatePeriodPicker(FULL_RESULT);
     renderKPIs(LAST_RESULT);
     await loadPlotly();
     renderCharts(LAST_RESULT);
@@ -1039,6 +1062,84 @@ document.getElementById("resetBtn").addEventListener("click", ()=>{
 });
 
 /* =====================================================================
+   period (year) filter — re-slices the aggregated series to one year and
+   recomputes the derivable KPIs. Acts purely on the already-parsed data, so
+   switching periods is instant and stays fully on-device. "All time" shows
+   the full parse (including the total record count, which can't be derived
+   from a single year).
+   ===================================================================== */
+function filterResultByYear(r, year){
+  const pick = (s, hasRoll)=>{
+    const x=[], y=[], roll=[];
+    for (let i=0;i<s.x.length;i++){
+      if (String(s.x[i]).slice(0,4) === year){
+        x.push(s.x[i]); y.push(s.y[i]); if (hasRoll) roll.push(s.roll[i]);
+      }
+    }
+    return hasRoll ? {x,y,roll} : {x,y};
+  };
+  const steps = pick(r.steps_daily, true);
+  const dist  = pick(r.monthly_distance, false);
+  const rhr   = pick(r.resting_hr, false);
+  const hrv   = pick(r.hrv, false);
+  const sleep = pick(r.sleep, false);
+  const wo    = pick(r.workouts_month, false);
+  const routes = (r.routes||[]).filter(rt => String(rt.key).slice(0,4) === year);
+  const sum = a => a.reduce((p,c)=>p+c,0);
+  const dates = steps.x.concat(rhr.x, hrv.x, sleep.x).sort();
+  return {
+    meta:{
+      date_min: dates[0] || (year+"-01-01"),
+      date_max: dates[dates.length-1] || (year+"-12-31"),
+      records: null,
+      total_steps: Math.round(sum(steps.y)),
+      total_distance: Math.round(sum(dist.y)*10)/10,
+      active_days: steps.y.filter(v=>v>0).length,
+      workouts: sum(wo.y),
+      avg_resting_hr: rhr.y.length ? Math.round(sum(rhr.y)/rhr.y.length) : null,
+    },
+    steps_daily: steps, monthly_distance: dist, resting_hr: rhr,
+    hrv, sleep, workouts_month: wo, routes,
+  };
+}
+
+function populatePeriodPicker(r){
+  const sel = document.getElementById("periodPick");
+  const wrap = document.getElementById("periodWrap");
+  const set = new Set();
+  const add = arr => arr.forEach(v=>{ const y = String(v).slice(0,4); if (/^\d{4}$/.test(y)) set.add(y); });
+  add(r.steps_daily.x); add(r.resting_hr.x); add(r.hrv.x); add(r.sleep.x);
+  add(r.monthly_distance.x); add(r.workouts_month.x);
+  const years = [...set].sort((a,b)=> b.localeCompare(a)); // newest first
+  sel.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "all"; optAll.textContent = t("filter.all");
+  sel.appendChild(optAll);
+  years.forEach(y=>{
+    const o = document.createElement("option");
+    o.value = y; o.textContent = y;
+    sel.appendChild(o);
+  });
+  sel.value = "all";
+  // a single year (or none) means the filter would do nothing — hide it
+  wrap.style.display = years.length > 1 ? "" : "none";
+}
+
+function applyPeriod(){
+  if (!FULL_RESULT) return;
+  const yr = document.getElementById("periodPick").value;
+  LAST_RESULT = (yr === "all") ? FULL_RESULT : filterResultByYear(FULL_RESULT, yr);
+  renderKPIs(LAST_RESULT);
+  renderCharts(LAST_RESULT);
+  renderRoutes(LAST_RESULT);
+}
+function refreshPeriodText(){
+  const sel = document.getElementById("periodPick");
+  if (sel && sel.options.length) sel.options[0].textContent = t("filter.all");
+}
+document.getElementById("periodPick").addEventListener("change", applyPeriod);
+
+/* =====================================================================
    rendering
    ===================================================================== */
 function fmtInt(n){ return (n==null) ? "—" : Number(n).toLocaleString(LANG==="zh"?"zh-CN":"en-US"); }
@@ -1052,8 +1153,9 @@ function renderKPIs(r){
     {lab:t("kpi.activeDays"), val:fmtInt(m.active_days), sub:t("kpi.days")},
     {lab:t("kpi.workouts"), val:fmtInt(m.workouts), sub:""},
     {lab:t("kpi.avgRestingHr"), val:(m.avg_resting_hr==null?"—":fmtInt(m.avg_resting_hr)), sub:t("kpi.bpm")},
-    {lab:t("kpi.records"), val:fmtInt(m.records), sub:""},
   ];
+  // "Health records" is a whole-export count — only meaningful for "All time".
+  if (m.records != null) cards.push({lab:t("kpi.records"), val:fmtInt(m.records), sub:""});
   document.getElementById("kpis").innerHTML = cards.map(c=>`
     <div class="kpi">
       <div class="kpi-lab">${c.lab}</div>
@@ -1471,11 +1573,13 @@ function renderRoutes(r){
   sec.style.display = "";
 
   if (!routes.length){
-    // Shown with a hint: route data only exists inside export.zip.
+    // Either the export has no route data at all (.xml upload), or the
+    // selected period simply contains no recorded routes.
     mapEl.style.display = "none";
     pick.style.display = "none";
     hint.style.display = "";
-    hint.innerHTML = t("map.noRoutes");
+    const hasAny = FULL_RESULT && FULL_RESULT.routes && FULL_RESULT.routes.length;
+    hint.innerHTML = hasAny ? t("map.noRoutesPeriod") : t("map.noRoutes");
     return;
   }
   hint.style.display = "none";
@@ -1556,7 +1660,8 @@ function refreshRouteText(){
   const hint = document.getElementById("mapHint");
   const pick = document.getElementById("routePick");
   if (!routes.length){
-    if (hint) hint.innerHTML = t("map.noRoutes");
+    const hasAny = FULL_RESULT && FULL_RESULT.routes && FULL_RESULT.routes.length;
+    if (hint) hint.innerHTML = hasAny ? t("map.noRoutesPeriod") : t("map.noRoutes");
     return;
   }
   if (pick && pick.options.length){
