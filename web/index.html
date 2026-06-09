@@ -1333,47 +1333,23 @@ function _argMin(x, y){
 function renderRecords(r){
   const sec = document.getElementById("recordsSec");
   const grid = document.getElementById("recGrid");
+  const recs = computeRecords(r);
   const cards = [];
 
-  // best step day
-  const sd = r.steps_daily;
-  const activeDays = [];
-  for (let i=0;i<sd.x.length;i++){ if (sd.y[i] > 0) activeDays.push(sd.x[i]); }
-  const bestDay = _argMax(sd.x, sd.y);
-  if (bestDay && bestDay.v > 0)
-    cards.push({lab:t("rec.bestStepDay"), val:fmtInt(bestDay.v), sub:bestDay.x});
-
-  // streaks
-  if (activeDays.length){
-    const st = _streaks(activeDays);
-    if (st.longest > 1)
-      cards.push({lab:t("rec.longestStreak"), val:tf("rec.days",{n:fmtInt(st.longest)}), sub:st.longestEnd||""});
-    // current streak only meaningful for the full timeline
-    if (LAST_RESULT === FULL_RESULT && st.current > 1)
-      cards.push({lab:t("rec.currentStreak"), val:tf("rec.days",{n:fmtInt(st.current)}), sub:""});
-  }
-
-  // biggest step month (derive from daily steps)
-  const moSteps = new Map();
-  for (let i=0;i<sd.x.length;i++){ const mo = String(sd.x[i]).slice(0,7); moSteps.set(mo, (moSteps.get(mo)||0) + sd.y[i]); }
-  if (moSteps.size){
-    const mx = [...moSteps.keys()], my = mx.map(k=>moSteps.get(k));
-    const best = _argMax(mx, my);
-    if (best && best.v > 0) cards.push({lab:t("rec.bestStepMonth"), val:fmtInt(Math.round(best.v)), sub:best.x});
-  }
-
-  // busiest workout month
-  const wm = r.workouts_month;
-  const bw = _argMax(wm.x, wm.y);
-  if (bw && bw.v > 0) cards.push({lab:t("rec.busiestWorkoutMonth"), val:fmtInt(bw.v), sub:bw.x});
-
-  // best night's sleep
-  const bs = _argMax(r.sleep.x, r.sleep.y);
-  if (bs && bs.v > 0) cards.push({lab:t("rec.bestSleep"), val:tf("rec.hours",{n:(Math.round(bs.v*10)/10)}), sub:bs.x});
-
-  // lowest resting HR
-  const lr = _argMin(r.resting_hr.x, r.resting_hr.y);
-  if (lr && isFinite(lr.v)) cards.push({lab:t("rec.lowestRhr"), val:fmtInt(lr.v)+" "+t("kpi.bpm"), sub:lr.x});
+  if (recs.bestStepDay)
+    cards.push({lab:t("rec.bestStepDay"), val:fmtInt(recs.bestStepDay.steps), sub:recs.bestStepDay.date});
+  if (recs.longestStreak)
+    cards.push({lab:t("rec.longestStreak"), val:tf("rec.days",{n:fmtInt(recs.longestStreak.days)}), sub:recs.longestStreak.end||""});
+  if (recs.currentStreak)
+    cards.push({lab:t("rec.currentStreak"), val:tf("rec.days",{n:fmtInt(recs.currentStreak.days)}), sub:""});
+  if (recs.bestStepMonth)
+    cards.push({lab:t("rec.bestStepMonth"), val:fmtInt(recs.bestStepMonth.steps), sub:recs.bestStepMonth.month});
+  if (recs.busiestWorkoutMonth)
+    cards.push({lab:t("rec.busiestWorkoutMonth"), val:fmtInt(recs.busiestWorkoutMonth.count), sub:recs.busiestWorkoutMonth.month});
+  if (recs.bestSleep)
+    cards.push({lab:t("rec.bestSleep"), val:tf("rec.hours",{n:recs.bestSleep.hours}), sub:recs.bestSleep.date});
+  if (recs.lowestRhr)
+    cards.push({lab:t("rec.lowestRhr"), val:fmtInt(recs.lowestRhr.bpm)+" "+t("kpi.bpm"), sub:recs.lowestRhr.date});
 
   if (!cards.length){ sec.style.display = "none"; return; }
   sec.style.display = "";
@@ -1383,6 +1359,45 @@ function renderRecords(r){
       <div class="rec-val">${c.val}</div>
       <div class="rec-sub">${c.sub||"&nbsp;"}</div>
     </div>`).join("");
+}
+
+// Compute personal bests as raw structured data, shared by the records panel
+// and the AI summary. Returns only the records that have data. "currentStreak"
+// is included only when viewing the full timeline (a single-year slice would
+// misrepresent a streak anchored to the most recent recorded day).
+function computeRecords(r){
+  const out = {};
+  const sd = r.steps_daily;
+  const activeDays = [];
+  for (let i=0;i<sd.x.length;i++){ if (sd.y[i] > 0) activeDays.push(sd.x[i]); }
+
+  const bestDay = _argMax(sd.x, sd.y);
+  if (bestDay && bestDay.v > 0) out.bestStepDay = { steps: bestDay.v, date: bestDay.x };
+
+  if (activeDays.length){
+    const st = _streaks(activeDays);
+    if (st.longest > 1) out.longestStreak = { days: st.longest, end: st.longestEnd || "" };
+    if (LAST_RESULT === FULL_RESULT && st.current > 1) out.currentStreak = { days: st.current };
+  }
+
+  const moSteps = new Map();
+  for (let i=0;i<sd.x.length;i++){ const mo = String(sd.x[i]).slice(0,7); moSteps.set(mo, (moSteps.get(mo)||0) + sd.y[i]); }
+  if (moSteps.size){
+    const mx = [...moSteps.keys()], my = mx.map(k=>moSteps.get(k));
+    const best = _argMax(mx, my);
+    if (best && best.v > 0) out.bestStepMonth = { steps: Math.round(best.v), month: best.x };
+  }
+
+  const bw = _argMax(r.workouts_month.x, r.workouts_month.y);
+  if (bw && bw.v > 0) out.busiestWorkoutMonth = { count: bw.v, month: bw.x };
+
+  const bs = _argMax(r.sleep.x, r.sleep.y);
+  if (bs && bs.v > 0) out.bestSleep = { hours: Math.round(bs.v*10)/10, date: bs.x };
+
+  const lr = _argMin(r.resting_hr.x, r.resting_hr.y);
+  if (lr && isFinite(lr.v)) out.lowestRhr = { bpm: lr.v, date: lr.x };
+
+  return out;
 }
 
 const COL = {accent:"#fa3c4c", blue:"#2e7fff", green:"#34c759", purple:"#8a5cf6", orange:"#ff9f0a", grid:"#e9edf2", ink:"#1d1d1f"};
@@ -2149,6 +2164,15 @@ function buildHealthSummary(){
     const el = document.getElementById(id);
     if (el && el.textContent.trim()) lines.push(el.textContent.trim());
   });
+  // personal bests (same data shown in the Streaks & records panel)
+  const recs = computeRecords(LAST_RESULT);
+  if (recs.bestStepDay) lines.push("Best step day: " + recs.bestStepDay.steps + " steps on " + recs.bestStepDay.date);
+  if (recs.longestStreak) lines.push("Longest active streak: " + recs.longestStreak.days + " days (ended " + recs.longestStreak.end + ")");
+  if (recs.currentStreak) lines.push("Current active streak: " + recs.currentStreak.days + " days");
+  if (recs.bestStepMonth) lines.push("Most steps in a month: " + recs.bestStepMonth.steps + " (" + recs.bestStepMonth.month + ")");
+  if (recs.busiestWorkoutMonth) lines.push("Most workouts in a month: " + recs.busiestWorkoutMonth.count + " (" + recs.busiestWorkoutMonth.month + ")");
+  if (recs.bestSleep) lines.push("Best night's sleep: " + recs.bestSleep.hours + " h on " + recs.bestSleep.date);
+  if (recs.lowestRhr) lines.push("Lowest resting heart rate: " + recs.lowestRhr.bpm + " bpm on " + recs.lowestRhr.date);
   return lines.join("\n");
 }
 
