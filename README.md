@@ -8,11 +8,12 @@ locally — no data ever leaves your machine.
 
 ## EchoHealth Web — run it in your browser
 
-`web/index.html` is a **single-file web app** that does everything client-side:
+`web/index.html` is a **single-page web app** that does everything client-side:
 drop your Apple Health `export.zip` (or `export.xml`) and it parses and charts
-your data **entirely inside the browser tab** using Pyodide. Nothing is uploaded,
-no account, no server. English / 中文 toggle and a first-visit privacy + tutorial
-guide are built in. Works on desktop and mobile browsers.
+your data **entirely inside the browser tab** with a streaming pure-JavaScript
+parser. Nothing is uploaded, no account, no server. English / 中文 toggle, light /
+dark themes, PWA install, and a first-visit privacy + tutorial guide are built in.
+Works on desktop and mobile browsers.
 
 **Try locally:**
 
@@ -46,6 +47,34 @@ mainland China, but the rest of the app still runs locally.)
 
 > Privacy: this repo intentionally excludes all personal health data
 > (`apple_health_export/`, `*.gpx`) via `.gitignore`. Only the code is published.
+
+### Architecture & development (web app)
+
+Static site under `web/`, no build step — deployed as-is.
+
+- `web/index.html` — the whole app (UI, CSS, rendering, charts, map, recap, AI client).
+- `web/parser.js` — the **pure parsing core**: streaming-tag aggregation, metric series,
+  fitness-age + sleep-consistency math, GPS route helpers. DOM-free and dependency-free,
+  loaded as a classic `<script>` before the inline app script and **unit-tested in Node**.
+  The browser-only streaming + unzip wrapper (`parseHealthExport`) stays in `index.html`
+  and calls into this module.
+- `web/api/chat.js` — Vercel serverless proxy to Gemini (API key server-side only).
+- `web/service-worker.js` + `manifest.webmanifest` + icons — PWA shell.
+- `web/vercel.json` — clean URLs + security headers (Content-Security-Policy, etc.).
+
+Conventions: heavy libraries (Plotly, Leaflet, jsPDF) are **lazy-loaded** only when first
+needed; all user-facing strings go through the `I18N` dictionary (`en` + `zh`); theming is
+CSS-variable based with a `[data-theme="dark"]` override; file-derived strings are escaped
+(`esc()`) before any `innerHTML`; no emoji in the UI.
+
+**Tests** — the parsing core has a zero-dependency Node test suite:
+
+```powershell
+node --test    # or: npm test
+```
+
+CI runs it on every push/PR to `main` (`.github/workflows/ci.yml`). When you change
+`web/parser.js`, add or update a test in `tests/parser.test.js`.
 
 ---
 

@@ -1,0 +1,10 @@
+{
+  "name": "echohealth",
+  "version": "1.0.0",
+  "description": "Turn an Apple Health export into an interactive dashboard, entirely on-device.",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT"
+}

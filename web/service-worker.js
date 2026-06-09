@@ -4,10 +4,11 @@
    CDN libraries (Plotly, Leaflet, fflate, jsPDF) and the AI chat proxy are
    network-only: the dashboard works offline once a file is parsed, but those
    extras need a connection. */
-const CACHE = "echohealth-v1";
+const CACHE = "echohealth-v2";
 const SHELL = [
   "./",
   "./index.html",
+  "./parser.js",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png",
