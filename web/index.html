@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#f5f5f7" />
 <title>EchoHealth · 回声健康</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="favicon-32.png" sizes="32x32" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <script>
   // Set the theme before first paint to avoid a flash of the wrong mode.
   (function(){
@@ -111,6 +115,27 @@
   }
   .drop .formats{margin-top:16px;font-size:12.5px;color:var(--muted)}
   input[type=file]{display:none}
+
+  /* ---- install reminder ---- */
+  .installbar{
+    display:flex;align-items:center;gap:12px;
+    background:var(--canvas);border:1px solid var(--hairline);border-radius:14px;
+    padding:12px 12px 12px 16px;margin-bottom:20px;
+  }
+  .install-ico{display:inline-flex;color:var(--accent);flex-shrink:0}
+  .install-ico svg{width:20px;height:20px;display:block}
+  .install-msg{flex:1;min-width:0;font-size:13.5px;line-height:1.5;color:var(--ink)}
+  .install-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .install-go{
+    background:var(--ink);color:var(--canvas);border:none;border-radius:9999px;
+    font-family:inherit;font-size:13px;font-weight:600;padding:8px 16px;cursor:pointer;white-space:nowrap;
+  }
+  .install-go:hover{opacity:.88}
+  .install-x{
+    background:none;border:none;color:var(--muted);font-size:20px;line-height:1;
+    cursor:pointer;padding:0 6px;font-family:inherit;border-radius:6px;
+  }
+  .install-x:hover{color:var(--ink)}
 
   /* ---- error banner ---- */
   .errbar{
@@ -394,6 +419,18 @@
 </div>
 
 <main class="wrap stage">
+  <!-- install reminder (PWA) -->
+  <div class="installbar" id="installBar" style="display:none">
+    <span class="install-ico" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 11l5 4 5-4"/><path d="M5 21h14"/></svg>
+    </span>
+    <span class="install-msg" id="installMsg"></span>
+    <span class="install-actions">
+      <button class="install-go" id="installGo" data-i="install.button" style="display:none"></button>
+      <button class="install-x" id="installX" aria-label="Dismiss">×</button>
+    </span>
+  </div>
+
   <!-- error banner -->
   <div class="errbar" id="errBar" role="alert" aria-live="assertive" style="display:none">
     <span class="errbar-msg" id="errMsg"></span>
@@ -497,6 +534,9 @@ const I18N = {
     "app.subtitle": "Turn your Apple Health export into an interactive dashboard — entirely inside your browser. Nothing is uploaded.",
     "nav.how": "How it works",
     "privacy.strip": "<b>Private by design.</b> Your data is processed on this device and never leaves your browser.",
+    "install.android": "<b>Install EchoHealth</b> for one-tap, offline access — it stays fully on your device.",
+    "install.ios": "<b>Add to your Home Screen:</b> tap the Share button, then “Add to Home Screen” — it stays fully on your device.",
+    "install.button": "Install",
     "drop.title": "Add your Apple Health export here",
     "drop.hint": "Tap Choose file (or drag in your export.zip / the export.xml inside it). We analyze it instantly, right here on your device.",
     "drop.button": "Choose file",
@@ -665,6 +705,9 @@ const I18N = {
     "app.subtitle": "把你的 Apple 健康导出文件变成可交互的数据看板——全部在你的浏览器中完成，不上传任何数据。",
     "nav.how": "使用说明",
     "privacy.strip": "<b>隐私优先设计。</b> 你的数据只在本设备处理，绝不会离开你的浏览器。",
+    "install.android": "<b>安装 EchoHealth</b>，即可一键、离线访问 — 所有数据仍保留在你的设备上。",
+    "install.ios": "<b>添加到主屏幕：</b>点击分享按钮，然后选择“添加到主屏幕” — 所有数据仍保留在你的设备上。",
+    "install.button": "安装",
     "drop.title": "在这里添加你的 Apple 健康导出文件",
     "drop.hint": "点击“选择文件”（或拖入 export.zip / 其中的 export.xml）。我们会立即在你的设备上完成分析。",
     "drop.button": "选择文件",
@@ -880,6 +923,12 @@ function applyLang(){
   });
   // re-render results if we already have data
   if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderRecords(LAST_RESULT); renderCharts(LAST_RESULT); renderCorrelations(LAST_RESULT); refreshRouteText(); refreshPeriodText(); }
+  // refresh the install reminder text if it is showing
+  const ib = document.getElementById("installBar");
+  if (ib && ib.style.display !== "none"){
+    const msg = document.getElementById("installMsg");
+    if (msg) msg.innerHTML = _deferredPrompt ? t("install.android") : t("install.ios");
+  }
   renderAiStatic();
 }
 
@@ -923,6 +972,57 @@ document.getElementById("themeBtn").addEventListener("click", ()=>{
   localStorage.setItem("ah_theme", THEME);
   applyTheme();
 });
+
+/* =====================================================================
+   PWA: service worker + install reminder
+   ===================================================================== */
+if ("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("service-worker.js").catch(()=>{});
+  });
+}
+
+let _deferredPrompt = null;
+function isStandalone(){
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+function isIOS(){
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+}
+function showInstallBar(){
+  if (isStandalone() || localStorage.getItem("ah_install_dismissed")) return;
+  const bar = document.getElementById("installBar");
+  const msg = document.getElementById("installMsg");
+  const go = document.getElementById("installGo");
+  if (_deferredPrompt){
+    msg.innerHTML = t("install.android");
+    go.style.display = "";
+  } else if (isIOS()){
+    msg.innerHTML = t("install.ios");
+    go.style.display = "none";
+  } else {
+    return; // no install path available on this browser
+  }
+  bar.style.display = "";
+}
+function hideInstallBar(remember){
+  document.getElementById("installBar").style.display = "none";
+  if (remember) localStorage.setItem("ah_install_dismissed", "1");
+}
+window.addEventListener("beforeinstallprompt", (e)=>{
+  e.preventDefault();
+  _deferredPrompt = e;
+  showInstallBar();
+});
+window.addEventListener("appinstalled", ()=> hideInstallBar(true));
+document.getElementById("installGo").addEventListener("click", async ()=>{
+  if (!_deferredPrompt) return;
+  _deferredPrompt.prompt();
+  try{ await _deferredPrompt.userChoice; }catch(e){}
+  _deferredPrompt = null;
+  hideInstallBar(false);
+});
+document.getElementById("installX").addEventListener("click", ()=> hideInstallBar(true));
 
 /* =====================================================================
    onboarding modal
@@ -2847,6 +2947,7 @@ async function sendAi(question){
    ===================================================================== */
 applyTheme();
 applyLang();
+showInstallBar();
 if (!localStorage.getItem("ah_onboarded")) openModal();
 </script>
 </body>
