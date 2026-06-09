@@ -454,6 +454,8 @@ const I18N = {
     "card.restingHr": "Avg resting HR",
     "card.bestDay": "Best day",
     "card.bestDaySteps": "{steps} steps · {day}",
+    "card.steps": "steps",
+    "card.longestRoute": "Longest route",
     "card.footer": "Made on-device with EchoHealth · nothing uploaded",
     "kpi.dateRange": "Date range",
     "kpi.records": "Health records",
@@ -562,6 +564,8 @@ const I18N = {
     "card.restingHr": "平均静息心率",
     "card.bestDay": "最佳一天",
     "card.bestDaySteps": "{day} · {steps} 步",
+    "card.steps": "步数",
+    "card.longestRoute": "最长路线",
     "card.footer": "由 EchoHealth 在本设备生成 · 不上传任何数据",
     "kpi.dateRange": "数据日期范围",
     "kpi.records": "健康记录数",
@@ -1486,6 +1490,50 @@ function _miniBars(ctx, vals, x, y, w, h, color){
   }
 }
 
+// Approximate path length of a [[lat,lon],...] track, in km (haversine).
+function _routePathKm(pts){
+  let km = 0;
+  for (let i=1;i<pts.length;i++){
+    const [la1,lo1] = pts[i-1], [la2,lo2] = pts[i];
+    const dLa = (la2-la1)*Math.PI/180, dLo = (lo2-lo1)*Math.PI/180;
+    const a = Math.sin(dLa/2)**2 + Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)**2;
+    km += 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
+  return km;
+}
+// Pick the longest-distance route in the set (the run worth showing off).
+function _pickHeroRoute(routes){
+  let best = null, bestKm = 0;
+  for (const rt of routes){
+    if (!rt.pts || rt.pts.length < 2) continue;
+    const km = _routePathKm(rt.pts);
+    if (km > bestKm){ bestKm = km; best = rt; }
+  }
+  return best ? { route: best, km: bestKm } : null;
+}
+// Draw a route outline, equirectangular projection, aspect-fit & centred in box.
+function _drawRouteOutline(ctx, pts, x, y, w, h, color){
+  const latR = pts.map(p=>p[0]), lonR = pts.map(p=>p[1]);
+  const [laMin, laMax] = _minMax(latR), [loMin, loMax] = _minMax(lonR);
+  const midLat = (laMin+laMax)/2 * Math.PI/180;
+  // longitude degrees are narrower than latitude away from the equator
+  const sx = Math.cos(midLat);
+  const gw = Math.max(1e-6, (loMax-loMin)*sx), gh = Math.max(1e-6, (laMax-laMin));
+  const pad = 14;
+  const scale = Math.min((w-pad*2)/gw, (h-pad*2)/gh);
+  const offX = x + (w - gw*scale)/2, offY = y + (h - gh*scale)/2;
+  const px = lo => offX + (lo-loMin)*sx*scale;
+  const py = la => offY + (laMax-la)*scale; // north up
+  ctx.beginPath();
+  ctx.moveTo(px(pts[0][1]), py(pts[0][0]));
+  for (let i=1;i<pts.length;i++) ctx.lineTo(px(pts[i][1]), py(pts[i][0]));
+  ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.stroke();
+  // start/end dots
+  ctx.fillStyle = "#34c759"; ctx.beginPath(); ctx.arc(px(pts[0][1]), py(pts[0][0]), 9, 0, 7); ctx.fill();
+  const e = pts[pts.length-1];
+  ctx.fillStyle = "#fa3c4c"; ctx.beginPath(); ctx.arc(px(e[1]), py(e[0]), 9, 0, 7); ctx.fill();
+}
+
 function _cardPeriodTitle(r){
   const sel = document.getElementById("periodPick");
   const yr = sel ? sel.value : "all";
@@ -1569,11 +1617,34 @@ function buildShareCard(){
     y += 150 + 36;
   }
 
-  // best day banner (steps)
+  // bottom panel: best step day, paired with a route outline when available
   const sy = r.steps_daily.y, sx = r.steps_daily.x;
   let bestVal = 0, bestDay = "";
   for (let i=0;i<sy.length;i++){ if (sy[i] > bestVal){ bestVal = sy[i]; bestDay = sx[i]; } }
-  if (bestVal > 0){
+  const hero = _pickHeroRoute(r.routes || []);
+
+  if (hero){
+    // two-column dark panel: stats left, route sketch right
+    const bh = 300;
+    _roundRect(ctx, PAD, y, CW, bh, 24); ctx.fillStyle = "#1d1d1f"; ctx.fill();
+    const colW = CW*0.46;
+    ctx.textAlign = "left";
+    if (bestVal > 0){
+      ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 26px " + FAM;
+      ctx.fillText(t("card.bestDay").toUpperCase(), PAD+34, y+34);
+      ctx.fillStyle = "#fff"; ctx.font = "700 44px " + FAM;
+      ctx.fillText(_fit(ctx, fmtInt(bestVal), colW-34), PAD+34, y+74);
+      ctx.fillStyle = "rgba(255,255,255,.7)"; ctx.font = "26px " + FAM;
+      ctx.fillText(_fit(ctx, t("card.steps") + " · " + bestDay, colW-34), PAD+34, y+128);
+    }
+    ctx.fillStyle = "rgba(255,255,255,.6)"; ctx.font = "600 26px " + FAM;
+    ctx.fillText(t("card.longestRoute").toUpperCase(), PAD+34, y+186);
+    ctx.fillStyle = "#fff"; ctx.font = "700 40px " + FAM;
+    ctx.fillText(_fit(ctx, (Math.round(hero.km*10)/10) + " " + t("kpi.km"), colW-34), PAD+34, y+222);
+    // outline in the right column
+    _drawRouteOutline(ctx, hero.route.pts, PAD+colW+20, y+30, CW-colW-54, bh-60, "#ff7a52");
+    y += bh + 36;
+  } else if (bestVal > 0){
     const bh = 170;
     _roundRect(ctx, PAD, y, CW, bh, 24); ctx.fillStyle = "#1d1d1f"; ctx.fill();
     ctx.textAlign = "left";
