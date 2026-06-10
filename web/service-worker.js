@@ -4,7 +4,7 @@
    CDN libraries (Plotly, Leaflet, fflate, jsPDF) and the AI chat proxy are
    network-only: the dashboard works offline once a file is parsed, but those
    extras need a connection. */
-const CACHE = "echohealth-v7";
+const CACHE = "echohealth-v8";
 const SHELL = [
   "./",
   "./index.html",
@@ -20,7 +20,13 @@ const SHELL = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  // {cache:"reload"} forces fresh copies from the network, so a new SW version
+  // never precaches stale HTTP-cached shell files.
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => Promise.all(SHELL.map((u) => c.add(new Request(u, { cache: "reload" })))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (e) => {
@@ -49,6 +55,11 @@ self.addEventListener("fetch", (e) => {
     );
     return;
   }
-  // Cache-first for static shell assets.
-  e.respondWith(caches.match(req).then((hit) => hit || fetch(req)));
+  // Cache-first for static shell assets. ignoreSearch so a versioned URL like
+  // app.js?v=8 still matches the cached app.js entry; if the version changed and
+  // it isn't cached, fall through to the network (and the new SW will have
+  // re-cached on activate anyway).
+  e.respondWith(
+    caches.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req))
+  );
 });
