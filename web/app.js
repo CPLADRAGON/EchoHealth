@@ -41,6 +41,15 @@ const I18N = {
     "rec.days": "{n} days",
     "rec.hours": "{n} h",
     "corr.title": "Patterns in your data",
+    "nav.overview": "Overview",
+    "nav.patterns": "Patterns",
+    "nav.routes": "Routes",
+    "nav.assistant": "Assistant",
+    "sec.activity": "Activity",
+    "sec.heart": "Heart",
+    "sec.sleep": "Sleep",
+    "sec.workouts": "Workouts",
+    "sec.body": "Body",
     "corr.sub": "How your daily metrics tend to move together. These are associations, not cause and effect.",
     "corr.sentence": "On days with more {a}, your {b} tends to be {dir}.",
     "corr.higher": "higher",
@@ -239,6 +248,15 @@ const I18N = {
     "rec.days": "{n} 天",
     "rec.hours": "{n} 小时",
     "corr.title": "你数据中的规律",
+    "nav.overview": "概览",
+    "nav.patterns": "规律",
+    "nav.routes": "路线",
+    "nav.assistant": "助手",
+    "sec.activity": "活动",
+    "sec.heart": "心脏",
+    "sec.sleep": "睡眠",
+    "sec.workouts": "锻炼",
+    "sec.body": "身体",
     "corr.sub": "你的每日指标是如何一起变化的。这些是相关关系，并非因果。",
     "corr.sentence": "在{a}较多的日子里，你的{b}往往会{dir}。",
     "corr.higher": "更高",
@@ -449,7 +467,7 @@ function applyLang(){
     b.setAttribute("aria-pressed", on ? "true" : "false");
   });
   // re-render results if we already have data
-  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderRecords(LAST_RESULT); renderCharts(LAST_RESULT); renderCorrelations(LAST_RESULT); refreshRouteText(); refreshPeriodText(); }
+  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderRecords(LAST_RESULT); renderCharts(LAST_RESULT); renderCorrelations(LAST_RESULT); refreshRouteText(); refreshPeriodText(); renderNav(); }
   // refresh the install reminder text if it is showing
   const ib = document.getElementById("installBar");
   if (ib && ib.style.display !== "none"){
@@ -744,6 +762,7 @@ async function handleFile(file){
     renderCharts(LAST_RESULT);
     renderCorrelations(LAST_RESULT);
     renderRoutes(LAST_RESULT);
+    renderNav();
   }catch(err){
     console.error(err);
     const raw = String(err && err.message || err);
@@ -905,6 +924,7 @@ function applyPeriod(){
   renderCharts(LAST_RESULT);
   renderCorrelations(LAST_RESULT);
   renderRoutes(LAST_RESULT);
+  renderNav();
 }
 function refreshPeriodText(){
   const sel = document.getElementById("periodPick");
@@ -1217,26 +1237,61 @@ function computeWeekday(r){
   return { avg, cnt, maxIdx, minIdx };
 }
 
+// Build the sticky jump-nav from whichever sections are present + visible.
+// Called after all render functions so chart sections already exist.
+const NAV_ITEMS = [
+  ["kpis", "nav.overview"],
+  ["recordsSec", "rec.title"],
+  ["csec-activity", "sec.activity"],
+  ["csec-heart", "sec.heart"],
+  ["csec-sleep", "sec.sleep"],
+  ["csec-workouts", "sec.workouts"],
+  ["csec-body", "sec.body"],
+  ["patternsSec", "nav.patterns"],
+  ["mapSec", "nav.routes"],
+  ["aiPanel", "nav.assistant"],
+];
+function renderNav(){
+  const nav = document.getElementById("secNav");
+  if (!nav) return;
+  const links = [];
+  for (const [id, key] of NAV_ITEMS){
+    const el = document.getElementById(id);
+    if (!el) continue;
+    // skip hidden sections (display:none or not laid out)
+    if (el.offsetParent === null && el.id !== "kpis") continue;
+    links.push(`<a class="secnav-link" href="#${id}">${t(key)}</a>`);
+  }
+  nav.innerHTML = links.join("");
+  nav.style.display = links.length > 1 ? "" : "none";
+}
+
 function renderCharts(r){
   if (!window.Plotly) return;   // charts render once Plotly is loaded on demand
   const grid = document.getElementById("chartGrid");
-  const blocks = [];
-  if (r.steps_daily.x.length) blocks.push(card("c_steps","chart.steps.title","chart.steps.sub","i_steps"));
-  if (r.monthly_distance.x.length) blocks.push(card("c_dist","chart.dist.title","chart.dist.sub","i_dist"));
-  if (r.resting_hr.x.length) blocks.push(card("c_rhr","chart.rhr.title","chart.rhr.sub","i_rhr"));
-  if (r.hrv.x.length) blocks.push(card("c_hrv","chart.hrv.title","chart.hrv.sub","i_hrv"));
-  if (r.sleep.x.length) blocks.push(card("c_sleep","chart.sleep.title","chart.sleep.sub","i_sleep"));
-  if (r.sleep_stages && r.sleep_stages.x.length) blocks.push(card("c_slst","chart.sleepStages.title","chart.sleepStages.sub","i_slst"));
-  if (r.workouts_month.x.length) blocks.push(card("c_wo","chart.workouts.title","chart.workouts.sub","i_wo"));
-  if (r.workout_types && r.workout_types.length) blocks.push(card("c_wtype","chart.wtype.title","chart.wtype.sub","i_wtype"));
   const wk = computeWeekday(r);
-  if (wk) blocks.push(card("c_wk","chart.weekday.title","chart.weekday.sub","i_wk"));
-  if (r.weight && r.weight.x.length) blocks.push(card("c_wt","chart.weight.title","chart.weight.sub","i_wt"));
-  if (r.vo2max && r.vo2max.x.length) blocks.push(card("c_vo2","chart.vo2.title","chart.vo2.sub","i_vo2"));
-  if (r.blood_pressure && r.blood_pressure.x.length) blocks.push(card("c_bp","chart.bp.title","chart.bp.sub","i_bp"));
-  if (r.flights_month && r.flights_month.x.length) blocks.push(card("c_fl","chart.flights.title","chart.flights.sub","i_fl"));
-  if (r.energy_month && r.energy_month.x.length) blocks.push(card("c_en","chart.energy.title","chart.energy.sub","i_en"));
-  grid.innerHTML = blocks.join("");
+  // group charts into labeled sections (used by the sticky jump-nav)
+  const secBlocks = { activity: [], heart: [], sleep: [], workouts: [], body: [] };
+  if (r.steps_daily.x.length) secBlocks.activity.push(card("c_steps","chart.steps.title","chart.steps.sub","i_steps"));
+  if (r.monthly_distance.x.length) secBlocks.activity.push(card("c_dist","chart.dist.title","chart.dist.sub","i_dist"));
+  if (wk) secBlocks.activity.push(card("c_wk","chart.weekday.title","chart.weekday.sub","i_wk"));
+  if (r.flights_month && r.flights_month.x.length) secBlocks.activity.push(card("c_fl","chart.flights.title","chart.flights.sub","i_fl"));
+  if (r.energy_month && r.energy_month.x.length) secBlocks.activity.push(card("c_en","chart.energy.title","chart.energy.sub","i_en"));
+  if (r.resting_hr.x.length) secBlocks.heart.push(card("c_rhr","chart.rhr.title","chart.rhr.sub","i_rhr"));
+  if (r.hrv.x.length) secBlocks.heart.push(card("c_hrv","chart.hrv.title","chart.hrv.sub","i_hrv"));
+  if (r.vo2max && r.vo2max.x.length) secBlocks.heart.push(card("c_vo2","chart.vo2.title","chart.vo2.sub","i_vo2"));
+  if (r.sleep.x.length) secBlocks.sleep.push(card("c_sleep","chart.sleep.title","chart.sleep.sub","i_sleep"));
+  if (r.sleep_stages && r.sleep_stages.x.length) secBlocks.sleep.push(card("c_slst","chart.sleepStages.title","chart.sleepStages.sub","i_slst"));
+  if (r.workouts_month.x.length) secBlocks.workouts.push(card("c_wo","chart.workouts.title","chart.workouts.sub","i_wo"));
+  if (r.workout_types && r.workout_types.length) secBlocks.workouts.push(card("c_wtype","chart.wtype.title","chart.wtype.sub","i_wtype"));
+  if (r.weight && r.weight.x.length) secBlocks.body.push(card("c_wt","chart.weight.title","chart.weight.sub","i_wt"));
+  if (r.blood_pressure && r.blood_pressure.x.length) secBlocks.body.push(card("c_bp","chart.bp.title","chart.bp.sub","i_bp"));
+  const SEC_ORDER = ["activity","heart","sleep","workouts","body"];
+  grid.innerHTML = SEC_ORDER.filter(s => secBlocks[s].length).map(s =>
+    `<section class="chart-sec" id="csec-${s}">
+       <h2 class="chart-sec-h" data-i="sec.${s}">${t("sec."+s)}</h2>
+       <div class="grid">${secBlocks[s].join("")}</div>
+     </section>`).join("");
 
   if (r.steps_daily.x.length){
     Plotly.newPlot("c_steps", [

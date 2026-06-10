@@ -15,6 +15,8 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
   body{
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     background:var(--parchment); color:var(--ink);
@@ -208,6 +210,26 @@
   .corr-r{font-variant-numeric:tabular-nums;white-space:nowrap}
   .corr-chartcard{margin-top:16px}
   .corr-foot{margin:14px 2px 0;font-size:12px;line-height:1.6;color:var(--muted)}
+
+  /* ---- sticky section nav ---- */
+  .secnav{
+    position:sticky;top:0;z-index:20;display:flex;gap:8px;overflow-x:auto;
+    padding:10px 0;margin:14px 0 0;background:var(--parchment);
+    border-bottom:1px solid var(--hairline);scrollbar-width:none;
+  }
+  .secnav::-webkit-scrollbar{display:none}
+  .secnav-link{
+    flex:0 0 auto;text-decoration:none;font-size:13px;font-weight:500;color:var(--muted);
+    background:var(--canvas);border:1px solid var(--hairline);border-radius:9999px;padding:7px 14px;
+    white-space:nowrap;transition:color .12s,border-color .12s;
+  }
+  .secnav-link:hover{color:var(--ink);border-color:var(--accent)}
+  /* anchored sections clear the sticky nav when jumped to */
+  #kpis,#recordsSec,.chart-sec,#patternsSec,#mapSec,#aiPanel{scroll-margin-top:64px}
+
+  /* ---- chart sections ---- */
+  .chart-sec{padding:8px 0 0}
+  .chart-sec-h{margin:18px 0 12px;font-size:15px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--muted)}
 
   section.charts{padding:18px 0 10px}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:20px}
