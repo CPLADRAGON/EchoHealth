@@ -784,9 +784,10 @@ fileInput.addEventListener("change", ()=>{ if(fileInput.files[0]) handleFile(fil
 // without their own (often 800 MB) export.
 const sampleBtn = document.getElementById("sampleBtn");
 if (sampleBtn) sampleBtn.addEventListener("click", ()=>{
-  if (typeof buildSampleFile !== "function") return;
-  try { handleFile(buildSampleFile()); }
-  catch(e){ console.error(e); showError(t("err.generic")); }
+  try {
+    if (typeof buildSampleFile !== "function") throw new Error("SAMPLE_UNAVAILABLE");
+    handleFile(buildSampleFile());
+  } catch(e){ console.error(e); showError(t("err.generic")); }
 });
 
 ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.add("drag");}));

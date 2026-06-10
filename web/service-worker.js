@@ -4,7 +4,7 @@
    CDN libraries (Plotly, Leaflet, fflate, jsPDF) and the AI chat proxy are
    network-only: the dashboard works offline once a file is parsed, but those
    extras need a connection. */
-const CACHE = "echohealth-v9";
+const CACHE = "echohealth-v10";
 const SHELL = [
   "./",
   "./index.html",
@@ -56,10 +56,23 @@ self.addEventListener("fetch", (e) => {
     );
     return;
   }
-  // Cache-first for static shell assets. ignoreSearch so a versioned URL like
-  // app.js?v=8 still matches the cached app.js entry; if the version changed and
-  // it isn't cached, fall through to the network (and the new SW will have
-  // re-cached on activate anyway).
+  // Network-first for code + styles. A versioned URL (app.js?v=N) can't beat a
+  // cache-first match when ignoreSearch is on, so an old cached app.js/parser.js
+  // would otherwise mask a fresh deploy (e.g. new buttons that "do nothing").
+  // Online: always take the network copy and refresh the cache. Offline: fall
+  // back to whatever is cached (ignoreSearch so a versioned URL still matches).
+  if (/\.(?:js|css)$/.test(url.pathname)) {
+    e.respondWith(
+      fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(url.pathname, copy));
+        return res;
+      }).catch(() => caches.match(req, { ignoreSearch: true }))
+    );
+    return;
+  }
+  // Cache-first for static shell assets (icons, manifest). ignoreSearch so a
+  // versioned URL still matches the cached entry; otherwise hit the network.
   e.respondWith(
     caches.match(req, { ignoreSearch: true }).then((hit) => hit || fetch(req))
   );
