@@ -216,6 +216,13 @@
     font-size:14px;line-height:1.6;color:var(--muted);padding:8px;
   }
   .leaflet-container{font-family:inherit}
+  /* route popup (theme-aware) */
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--canvas);color:var(--ink);box-shadow:0 2px 12px rgba(0,0,0,.18)}
+  .leaflet-popup-content{margin:12px 14px;font-family:inherit}
+  .route-popup .rp-title{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:6px}
+  .route-popup .rp-row{display:flex;justify-content:space-between;gap:18px;font-size:13px;color:var(--muted);padding:2px 0}
+  .route-popup .rp-row b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
+  .leaflet-popup-close-button{color:var(--muted)!important}
 
   .reset{
     background:none;border:1px solid var(--hairline);border-radius:9999px;color:var(--ink);

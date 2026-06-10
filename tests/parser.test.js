@@ -221,6 +221,19 @@ test("routeLabel + routeSortKey from filename", () => {
   assert.strictEqual(P.routeSortKey("route_2022-10-13_12.05am.gpx"), "2022-10-13 00:05");
 });
 
+test("routeDurationSec: span between first and last <time>", () => {
+  const gpx = `<trkpt lat="1.3" lon="103.8"><time>2022-10-13T15:00:00Z</time></trkpt>` +
+              `<trkpt lat="1.31" lon="103.81"><time>2022-10-13T15:30:30Z</time></trkpt>`;
+  assert.strictEqual(P.routeDurationSec(gpx), 1830); // 30m30s
+  assert.strictEqual(P.routeDurationSec("<trkpt/>"), 0); // no <time> → 0
+});
+
+test("routePathKm: haversine length is sane", () => {
+  // ~111 km per degree of latitude near the equator
+  const km = P.routePathKm([[0, 0], [1, 0]]);
+  assert.ok(km > 110 && km < 112, "1° latitude ≈ 111 km, got " + km);
+});
+
 test("naiveMs ignores timezone, computes duration", () => {
   const ms1 = P.naiveMs("2024-01-01 23:00:00 +0000");
   const ms2 = P.naiveMs("2024-01-02 01:00:00 +0800");

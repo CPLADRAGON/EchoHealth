@@ -361,6 +361,7 @@ const MAX_ROUTE_PTS = 300; // decimation target — invisible at map zoom, tiny 
 const TRKPT_RE = /<trkpt\b[^>]*>/g;
 const LAT_RE = /\blat="([-\d.]+)"/;
 const LON_RE = /\blon="([-\d.]+)"/;
+const TIME_RE = /<time>([^<]+)<\/time>/g;
 
 // Pull [lat, lon] pairs from GPX text (Apple writes lon before lat).
 function extractRoutePoints(text){
@@ -373,6 +374,29 @@ function extractRoutePoints(text){
     }
   }
   return pts;
+}
+// Elapsed seconds from the first to the last <time> in a GPX track (0 if none).
+function routeDurationSec(text){
+  let m, first = null, last = null; TIME_RE.lastIndex = 0;
+  while ((m = TIME_RE.exec(text)) !== null){
+    if (first === null) first = m[1];
+    last = m[1];
+  }
+  if (first === null || last === null) return 0;
+  const a = Date.parse(first), b = Date.parse(last);
+  if (isNaN(a) || isNaN(b) || b < a) return 0;
+  return Math.round((b - a) / 1000);
+}
+// Great-circle length (km) of a [[lat,lon],...] track (haversine).
+function routePathKm(pts){
+  let km = 0;
+  for (let i = 1; i < pts.length; i++){
+    const [la1, lo1] = pts[i-1], [la2, lo2] = pts[i];
+    const dLa = (la2-la1)*Math.PI/180, dLo = (lo2-lo1)*Math.PI/180;
+    const h = Math.sin(dLa/2)**2 + Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)**2;
+    km += 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1-h));
+  }
+  return km;
 }
 // Keep at most `max` points, always preserving the first and last.
 function decimate(pts, max){
@@ -413,5 +437,6 @@ if (typeof module !== "undefined" && module.exports) {
     handleTag, finalize, _fitnessAge, _circStdevMin, _sleepConsistency,
     workoutTypeName, aggWorkoutTypes,
     MAX_ROUTE_PTS, extractRoutePoints, decimate, routeLabel, routeSortKey,
+    routeDurationSec, routePathKm,
   };
 }

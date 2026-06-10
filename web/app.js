@@ -157,6 +157,10 @@ const I18N = {
     "map.noRoutesPeriod": "No workout routes were recorded in this period.",
     "map.loadError": "The map library couldn't load. Check your connection and try again.",
     "map.privacy": "Routes can reveal your home and frequent locations — everything is drawn on your device and never uploaded. Map tiles are loaded from OpenStreetMap.",
+    "route.distance": "Distance",
+    "route.duration": "Duration",
+    "route.pace": "Avg pace",
+    "route.perKm": "/km",
     "footer.text": "EchoHealth · Runs locally in your browser · No account, no servers, no tracking.",
     "onb.badge": "100% on-device · nothing uploaded",
     "onb.title": "Welcome",
@@ -343,6 +347,10 @@ const I18N = {
     "map.noRoutesPeriod": "此时间范围内没有运动路线记录。",
     "map.loadError": "地图组件加载失败。请检查网络后重试。",
     "map.privacy": "路线可能会暴露你的住址和常去地点——所有内容都在你的设备上绘制，绝不上传。地图瓦片来自 OpenStreetMap。",
+    "route.distance": "距离",
+    "route.duration": "时长",
+    "route.pace": "平均配速",
+    "route.perKm": "/公里",
     "footer.text": "回声健康 · 在你的浏览器本地运行 · 无账号、无服务器、无追踪。",
     "onb.badge": "100% 本地处理 · 不上传任何数据",
     "onb.title": "欢迎使用",
@@ -621,10 +629,13 @@ async function parseHealthExport(file, onProgress){
           if (err){ perr = err; return; }
           gbuf += dec.decode(chunk, { stream: !final });
           if (final){
-            const pts = decimate(extractRoutePoints(gbuf), MAX_ROUTE_PTS);
+            const raw = extractRoutePoints(gbuf);
+            const km = Math.round(routePathKm(raw) * 100) / 100;  // full-res distance
+            const dur = routeDurationSec(gbuf);                   // seconds, 0 if no timestamps
+            const pts = decimate(raw, MAX_ROUTE_PTS);
             gbuf = "";
             if (pts.length >= 2){
-              routes.push({ name: routeLabel(entry.name), key: routeSortKey(entry.name), pts });
+              routes.push({ name: routeLabel(entry.name), key: routeSortKey(entry.name), pts, km, dur });
             }
           }
         };
@@ -1571,23 +1582,14 @@ function _miniBars(ctx, vals, x, y, w, h, color){
   }
 }
 
-// Approximate path length of a [[lat,lon],...] track, in km (haversine).
-function _routePathKm(pts){
-  let km = 0;
-  for (let i=1;i<pts.length;i++){
-    const [la1,lo1] = pts[i-1], [la2,lo2] = pts[i];
-    const dLa = (la2-la1)*Math.PI/180, dLo = (lo2-lo1)*Math.PI/180;
-    const a = Math.sin(dLa/2)**2 + Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dLo/2)**2;
-    km += 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  }
-  return km;
-}
 // Pick the longest-distance route in the set (the run worth showing off).
+// Routes carry an accurate full-resolution `km` from the parser; fall back to
+// the parser's haversine on points for any route missing it.
 function _pickHeroRoute(routes){
   let best = null, bestKm = 0;
   for (const rt of routes){
     if (!rt.pts || rt.pts.length < 2) continue;
-    const km = _routePathKm(rt.pts);
+    const km = (rt.km != null) ? rt.km : routePathKm(rt.pts);
     if (km > bestKm){ bestKm = km; best = rt; }
   }
   return best ? { route: best, km: bestKm } : null;
@@ -2122,6 +2124,33 @@ function renderRoutes(r){
   });
 }
 
+// Format seconds as "h:mm:ss" or "m:ss".
+function fmtDur(sec){
+  sec = Math.round(sec);
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+  const pad = n => String(n).padStart(2,"0");
+  return h > 0 ? h + ":" + pad(m) + ":" + pad(s) : m + ":" + pad(s);
+}
+// Average pace as "m:ss /km" from seconds + km.
+function fmtPace(sec, km){
+  if (!(sec > 0) || !(km > 0)) return null;
+  const spk = sec / km;
+  const m = Math.floor(spk/60), s = Math.round(spk%60);
+  return m + ":" + String(s).padStart(2,"0") + " " + t("route.perKm");
+}
+// Popup body for a route polyline. rt.name is filename-derived → escape it.
+function routePopupHtml(rt){
+  const rows = [];
+  rows.push(`<div class="rp-title">${esc(rt.name)}</div>`);
+  if (rt.km > 0) rows.push(`<div class="rp-row"><span>${t("route.distance")}</span><b>${(Math.round(rt.km*100)/100)} ${t("kpi.km")}</b></div>`);
+  if (rt.dur > 0){
+    rows.push(`<div class="rp-row"><span>${t("route.duration")}</span><b>${fmtDur(rt.dur)}</b></div>`);
+    const pace = fmtPace(rt.dur, rt.km);
+    if (pace) rows.push(`<div class="rp-row"><span>${t("route.pace")}</span><b>${pace}</b></div>`);
+  }
+  return `<div class="route-popup">${rows.join("")}</div>`;
+}
+
 function buildMap(mapEl, routes){
   if (_map){ _map.remove(); _map = null; }
   _routeLayers = [];
@@ -2132,10 +2161,19 @@ function buildMap(mapEl, routes){
   const renderer = L.canvas({ padding: 0.5 });
 
   let minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
-  routes.forEach(rt=>{
+  routes.forEach((rt, idx)=>{
     const line = L.polyline(rt.pts, {
-      renderer, color: ROUTE_DIM, weight: 2, opacity: 1, interactive: false,
+      renderer, color: ROUTE_DIM, weight: 2, opacity: 1, interactive: true,
     }).addTo(_map);
+    line.bindPopup(routePopupHtml(rt), { closeButton: true });
+    line.on("click", ()=>{
+      const pick = document.getElementById("routePick");
+      if (pick) pick.value = String(idx);  // sync the picker + highlight styling
+      _routeLayers.forEach((l, i)=>l.setStyle(
+        i === idx ? { color: ROUTE_HI, weight: 4 } : { color: "rgba(180,190,200,0.25)", weight: 1.5 }
+      ));
+      line.bringToFront();
+    });
     _routeLayers.push(line);
     for (const [la, lo] of rt.pts){
       if (la < minLat) minLat = la; if (la > maxLat) maxLat = la;
