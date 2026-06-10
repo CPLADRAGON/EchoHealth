@@ -813,6 +813,7 @@ async function handleFile(file){
       }
     });
     LAST_RESULT = FULL_RESULT;
+    _narrCache = {};   // fresh data → drop any cached narratives
     showStage("results");
     populatePeriodPicker(FULL_RESULT);
     renderKPIs(LAST_RESULT);
@@ -987,6 +988,7 @@ function applyPeriod(){
   renderCorrelations(LAST_RESULT);
   renderRoutes(LAST_RESULT);
   renderNav();
+  renderNarrative();
 }
 function refreshPeriodText(){
   const sel = document.getElementById("periodPick");
@@ -2657,12 +2659,30 @@ async function streamChat(payload, onDelta){
 
 // AI auto-narrative: a short, proactive "here's your year" written from the same
 // summary stats the assistant sees. Best-effort — hidden if it can't be reached.
+// Narratives are cached per (period, language) so toggling the language or
+// flipping back to a previously seen year costs no extra AI calls; only a new
+// (period, language) combination triggers a request. The cache is cleared when a
+// new file is parsed.
 let _narrToken = 0;
+let _narrCache = {};
+function _narrKey(){
+  const sel = document.getElementById("periodPick");
+  const yr = (sel && sel.value) ? sel.value : "all";
+  return yr + "|" + LANG;
+}
 async function renderNarrative(){
   const card = document.getElementById("aiNarr");
   const body = document.getElementById("aiNarrBody");
   if (!card || !body || !LAST_RESULT) return;
   const token = ++_narrToken;
+  const key = _narrKey();
+  // Already have this period+language? Show it instantly, no network call.
+  if (_narrCache[key]){
+    card.style.display = "";
+    card.classList.remove("loading");
+    body.innerHTML = mdToHtml(_narrCache[key]);
+    return;
+  }
   card.style.display = "";
   card.classList.add("loading");
   body.textContent = t("narr.loading");
@@ -2672,9 +2692,10 @@ async function renderNarrative(){
       { question: t("narr.prompt"), summary: buildHealthSummary(), history: [], lang: LANG },
       delta => { if (token !== _narrToken) return; acc += delta; body.innerHTML = mdToHtml(acc); }
     );
-    if (token !== _narrToken) return;
+    if (acc.trim()) _narrCache[key] = acc;   // cache even if superseded — still valid for this key
+    if (token !== _narrToken) return;        // a newer render took over; leave the DOM to it
     card.classList.remove("loading");
-    if (!acc.trim()){ card.style.display = "none"; }
+    if (!acc.trim()) card.style.display = "none";
   } catch(e){
     if (token !== _narrToken) return;
     card.style.display = "none";
