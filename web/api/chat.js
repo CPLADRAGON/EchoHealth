@@ -94,8 +94,12 @@ module.exports = async (req, res) => {
   }
   contents.push({ role: "user", parts: [{ text: question }] });
 
+  // Stream the reply token-by-token from Gemini and re-emit it to the browser
+  // as Server-Sent Events: `data: {"delta": "..."}` frames, then a final
+  // `data: {"done": true}`. On an upstream failure we fall back to a plain JSON
+  // error body (the client detects the content-type and handles both).
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
-    encodeURIComponent(MODEL) + ":generateContent?key=" + encodeURIComponent(key);
+    encodeURIComponent(MODEL) + ":streamGenerateContent?alt=sse&key=" + encodeURIComponent(key);
 
   try {
     const r = await fetch(url, {
@@ -108,24 +112,48 @@ module.exports = async (req, res) => {
       }),
     });
 
-    if (!r.ok) {
-      const detail = await r.text();
+    if (!r.ok || !r.body) {
+      const detail = await r.text().catch(() => "");
       res.statusCode = 502;
       return res.end(JSON.stringify({ error: "Upstream error.", status: r.status, detail: detail.slice(0, 500) }));
     }
 
-    const data = await r.json();
-    const reply = (((data.candidates || [])[0] || {}).content || {}).parts
-      ?.map((p) => p.text || "").join("").trim();
-
-    if (!reply) {
-      res.statusCode = 502;
-      return res.end(JSON.stringify({ error: "No response generated." }));
-    }
-
     res.statusCode = 200;
-    return res.end(JSON.stringify({ reply }));
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+
+    const reader = r.body.getReader();
+    const dec = new TextDecoder("utf-8");
+    let buf = "", sent = false;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf("\n")) !== -1) {
+        const line = buf.slice(0, idx).trim();
+        buf = buf.slice(idx + 1);
+        if (!line || line[0] === ":" || line.slice(0, 5) !== "data:") continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const obj = JSON.parse(payload);
+          const parts = (((obj.candidates || [])[0] || {}).content || {}).parts || [];
+          let text = "";
+          for (const p of parts) text += p.text || "";
+          if (text) { sent = true; res.write("data: " + JSON.stringify({ delta: text }) + "\n\n"); }
+        } catch (e) { /* ignore partial/non-JSON keep-alive lines */ }
+      }
+    }
+    if (!sent) res.write("data: " + JSON.stringify({ error: "No response generated." }) + "\n\n");
+    res.write("data: " + JSON.stringify({ done: true }) + "\n\n");
+    return res.end();
   } catch (err) {
+    if (res.headersSent) {
+      res.write("data: " + JSON.stringify({ error: "Request failed." }) + "\n\n");
+      return res.end();
+    }
     res.statusCode = 502;
     return res.end(JSON.stringify({ error: "Request failed.", detail: String(err).slice(0, 300) }));
   }

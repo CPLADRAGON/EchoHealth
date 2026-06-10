@@ -63,6 +63,30 @@ const I18N = {
     "corr.m.sleep": "sleep",
     "corr.m.rhr": "resting heart rate",
     "corr.m.hrv": "heart rate variability",
+    "corr.lagSentence": "More {a} tends to be followed by {dir} {b} the next day.",
+    "corr.lagMeta": "next-day association · based on {n} day pairs",
+    "corr.chartSubLag": "{a} today vs {b} the next day · each dot is one day",
+    "anom.title": "Notable changes",
+    "anom.sub": "Months where a metric drifted clearly from your usual range. Informational, not medical advice.",
+    "anom.sentence": "Your {metric} {dir} to about {value} in {month}, versus your usual {baseline}.",
+    "anom.up": "rose",
+    "anom.down": "dropped",
+    "anom.m.steps": "daily steps",
+    "anom.m.rhr": "resting heart rate",
+    "anom.m.hrv": "heart rate variability",
+    "anom.m.sleep": "nightly sleep",
+    "anom.m.weight": "body weight",
+    "unit.h": "h",
+    "heat.title": "Activity calendar",
+    "heat.sub": "Every day, colored by how much. Darker means more.",
+    "heat.metric": "Metric",
+    "heat.m.steps": "steps",
+    "heat.m.sleep": "sleep",
+    "ins.heat": "Each square is one day of {metric}; darker squares are higher days.",
+    "narr.title": "Your year at a glance",
+    "narr.loading": "Writing a quick summary of your data\u2026",
+    "narr.prompt": "In 3 short sentences, give me a warm, plain-language overview of my health data: the standout trend, one positive, and one thing to watch. Use only the summary statistics. Do not use bullet points.",
+    "drop.sample": "Try with sample data",
     "report.savePng": "Save image",
     "report.savePdf": "Save PDF",
     "report.generating": "Preparing\u2026",
@@ -270,6 +294,30 @@ const I18N = {
     "corr.m.sleep": "睡眠",
     "corr.m.rhr": "静息心率",
     "corr.m.hrv": "心率变异性",
+    "corr.lagSentence": "{a}较多的日子，往往会让第二天的{b}{dir}。",
+    "corr.lagMeta": "次日关联 · 基于 {n} 组相邻日",
+    "corr.chartSubLag": "当天的{a} 与 次日的{b} · 每个点代表一天",
+    "anom.title": "值得注意的变化",
+    "anom.sub": "某项指标明显偏离你日常范围的月份。仅供参考，不构成医疗建议。",
+    "anom.sentence": "你的{metric}在{month}{dir}到约 {value}，而你平时约为 {baseline}。",
+    "anom.up": "上升",
+    "anom.down": "下降",
+    "anom.m.steps": "每日步数",
+    "anom.m.rhr": "静息心率",
+    "anom.m.hrv": "心率变异性",
+    "anom.m.sleep": "夜间睡眠",
+    "anom.m.weight": "体重",
+    "unit.h": "小时",
+    "heat.title": "活动日历",
+    "heat.sub": "每一天，按数值深浅着色。颜色越深表示越多。",
+    "heat.metric": "指标",
+    "heat.m.steps": "步数",
+    "heat.m.sleep": "睡眠",
+    "ins.heat": "每个方块是一天的{metric}；颜色越深表示当天越高。",
+    "narr.title": "你的年度概览",
+    "narr.loading": "正在为你的数据写一段简要概述……",
+    "narr.prompt": "请用 3 句简短、温和、通俗的话概述我的健康数据：最突出的趋势、一个积极点、以及一个需要留意的地方。只使用汇总统计数据，不要使用要点符号，用中文回答。",
+    "drop.sample": "试用示例数据",
     "report.savePng": "保存图片",
     "report.savePdf": "保存 PDF",
     "report.generating": "正在生成\u2026",
@@ -467,7 +515,7 @@ function applyLang(){
     b.setAttribute("aria-pressed", on ? "true" : "false");
   });
   // re-render results if we already have data
-  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderRecords(LAST_RESULT); renderCharts(LAST_RESULT); renderCorrelations(LAST_RESULT); refreshRouteText(); refreshPeriodText(); renderNav(); }
+  if (LAST_RESULT) { renderKPIs(LAST_RESULT); renderRecords(LAST_RESULT); renderAnomalies(LAST_RESULT); renderCharts(LAST_RESULT); renderCorrelations(LAST_RESULT); refreshRouteText(); refreshPeriodText(); renderNav(); renderNarrative(); }
   // refresh the install reminder text if it is showing
   const ib = document.getElementById("installBar");
   if (ib && ib.style.display !== "none"){
@@ -731,6 +779,16 @@ document.getElementById("pickBtn").addEventListener("click", ()=>fileInput.click
 drop.addEventListener("click", e=>{ if(e.target===drop || e.target.tagName==="H2" || e.target.tagName==="P") fileInput.click(); });
 fileInput.addEventListener("change", ()=>{ if(fileInput.files[0]) handleFile(fileInput.files[0]); });
 
+// "Try with sample data": build a synthetic export in-memory and run it through
+// the exact same pipeline a real upload uses, so newcomers can see the dashboard
+// without their own (often 800 MB) export.
+const sampleBtn = document.getElementById("sampleBtn");
+if (sampleBtn) sampleBtn.addEventListener("click", ()=>{
+  if (typeof buildSampleFile !== "function") return;
+  try { handleFile(buildSampleFile()); }
+  catch(e){ console.error(e); showError(t("err.generic")); }
+});
+
 ["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.add("drag");}));
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev, e=>{e.preventDefault();drop.classList.remove("drag");}));
 drop.addEventListener("drop", e=>{
@@ -758,11 +816,13 @@ async function handleFile(file){
     populatePeriodPicker(FULL_RESULT);
     renderKPIs(LAST_RESULT);
     renderRecords(LAST_RESULT);
+    renderAnomalies(LAST_RESULT);
     await loadPlotly();
     renderCharts(LAST_RESULT);
     renderCorrelations(LAST_RESULT);
     renderRoutes(LAST_RESULT);
     renderNav();
+    renderNarrative();
   }catch(err){
     console.error(err);
     const raw = String(err && err.message || err);
@@ -921,6 +981,7 @@ function applyPeriod(){
   LAST_RESULT = (yr === "all") ? FULL_RESULT : filterResultByYear(FULL_RESULT, yr);
   renderKPIs(LAST_RESULT);
   renderRecords(LAST_RESULT);
+  renderAnomalies(LAST_RESULT);
   renderCharts(LAST_RESULT);
   renderCorrelations(LAST_RESULT);
   renderRoutes(LAST_RESULT);
@@ -931,6 +992,10 @@ function refreshPeriodText(){
   if (sel && sel.options.length) sel.options[0].textContent = t("filter.all");
 }
 document.getElementById("periodPick").addEventListener("change", applyPeriod);
+(function initHeatPick(){
+  const sel = document.getElementById("heatPick");
+  if (sel) sel.addEventListener("change", ()=>{ if (LAST_RESULT) renderHeatmap(LAST_RESULT); });
+})();
 
 /* =====================================================================
    rendering
@@ -1082,7 +1147,8 @@ function computeRecords(r){
    ----------------------------------------------------------------------- */
 const CORR_MIN_DAYS = 30;
 const CORR_MIN_R = 0.2;
-// candidate pairs: [metricKeyA, seriesA, metricKeyB, seriesB] — daily series only
+const CORR_LAG_MIN_R = 0.18; // lagged effects are usually weaker than same-day
+// same-day candidate pairs: [metricKeyA, seriesA, metricKeyB, seriesB]
 const CORR_PAIRS = [
   ["steps","steps_daily","sleep","sleep"],
   ["steps","steps_daily","rhr","resting_hr"],
@@ -1091,21 +1157,14 @@ const CORR_PAIRS = [
   ["sleep","sleep","hrv","hrv"],
   ["rhr","resting_hr","hrv","hrv"],
 ];
-function _seriesToDayMap(s){
-  // only daily series (date keys length 10) are usable for day-aligned pairing
-  const m = new Map();
-  for (let i=0;i<s.x.length;i++){ if (String(s.x[i]).length === 10) m.set(s.x[i], s.y[i]); }
-  return m;
-}
-function _pearson(xs, ys){
-  const n = xs.length; if (n < 2) return 0;
-  let sx=0, sy=0, sxx=0, syy=0, sxy=0;
-  for (let i=0;i<n;i++){ const a=xs[i], b=ys[i]; sx+=a; sy+=b; sxx+=a*a; syy+=b*b; sxy+=a*b; }
-  const cov = sxy - sx*sy/n;
-  const vx = sxx - sx*sx/n, vy = syy - sy*sy/n;
-  if (vx <= 0 || vy <= 0) return 0;
-  return cov / Math.sqrt(vx*vy);
-}
+// directional lag pairs: value of A on day d vs value of B on day d+1
+// (e.g. does a poor night's sleep precede a higher resting HR the next day?)
+const CORR_LAG_PAIRS = [
+  ["sleep","sleep","rhr","resting_hr"],
+  ["sleep","sleep","hrv","hrv"],
+  ["steps","steps_daily","rhr","resting_hr"],
+  ["steps","steps_daily","sleep","sleep"],
+];
 function computeCorrelations(r){
   const found = [];
   const seen = new Set();
@@ -1113,16 +1172,18 @@ function computeCorrelations(r){
     const key = [ka,kb].sort().join("|");
     if (seen.has(key)) continue;
     const A = r[sa], B = r[sb];
-    if (!A || !B || !A.x || !B.x) continue;
-    const mapA = _seriesToDayMap(A), mapB = _seriesToDayMap(B);
-    if (!mapA.size || !mapB.size) continue;
-    const xs = [], ys = [];
-    for (const [day, va] of mapA){ if (mapB.has(day)){ xs.push(va); ys.push(mapB.get(day)); } }
-    if (xs.length < CORR_MIN_DAYS) continue;
-    const r0 = _pearson(xs, ys);
-    if (Math.abs(r0) < CORR_MIN_R) continue;
+    if (!A || !B) continue;
+    const c = correlate(A, B, 0);
+    if (c.n < CORR_MIN_DAYS || Math.abs(c.r) < CORR_MIN_R) continue;
     seen.add(key);
-    found.push({ a:ka, b:kb, r:r0, n:xs.length, xs, ys });
+    found.push({ a:ka, b:kb, r:c.r, n:c.n, xs:c.xs, ys:c.ys, lag:0 });
+  }
+  for (const [ka, sa, kb, sb] of CORR_LAG_PAIRS){
+    const A = r[sa], B = r[sb];
+    if (!A || !B) continue;
+    const c = correlate(A, B, 1);
+    if (c.n < CORR_MIN_DAYS || Math.abs(c.r) < CORR_LAG_MIN_R) continue;
+    found.push({ a:ka, b:kb, r:c.r, n:c.n, xs:c.xs, ys:c.ys, lag:1 });
   }
   found.sort((p,q)=> Math.abs(q.r) - Math.abs(p.r));
   return found;
@@ -1139,15 +1200,18 @@ function renderCorrelations(r){
   list.innerHTML = found.map(f=>{
     const a = t("corr.m."+f.a), b = t("corr.m."+f.b);
     const dir = f.r >= 0 ? t("corr.higher") : t("corr.lower");
-    const sentence = tf("corr.sentence", {a, b, dir});
+    const sentence = f.lag
+      ? tf("corr.lagSentence", {a, b, dir})
+      : tf("corr.sentence", {a, b, dir});
     const pct = Math.round(Math.abs(f.r)*100);
+    const meta = f.lag ? tf("corr.lagMeta",{n:fmtInt(f.n)}) : tf("corr.meta",{n:fmtInt(f.n)});
     return `<div class="corr">
       <div class="corr-text">${sentence}</div>
       <div class="corr-meta">
         <span class="corr-bar"><i style="width:${pct}%"></i></span>
         <span class="corr-r">r = ${(f.r>=0?"+":"")}${f.r.toFixed(2)}</span>
       </div>
-      <div class="corr-meta">${tf("corr.meta",{n:fmtInt(f.n)})}</div>
+      <div class="corr-meta">${meta}</div>
     </div>`;
   }).join("");
 
@@ -1155,7 +1219,8 @@ function renderCorrelations(r){
   const top = found[0];
   if (window.Plotly && top){
     const a = t("corr.m."+top.a), b = t("corr.m."+top.b);
-    document.getElementById("corrChartSub").textContent = tf("corr.chartSub", {a, b});
+    document.getElementById("corrChartSub").textContent =
+      top.lag ? tf("corr.chartSubLag", {a, b}) : tf("corr.chartSub", {a, b});
     chartCard.style.display = "";
     const lay = baseLayout(b);
     lay.hovermode = "closest";
@@ -1168,6 +1233,140 @@ function renderCorrelations(r){
   } else {
     chartCard.style.display = "none";
   }
+}
+
+/* --- anomaly / change detection ----------------------------------------
+   Surfaces months where a metric drifted clearly from the user's usual range.
+   Detection itself lives in parser.js (pure + unit-tested); this layer picks
+   the strongest shift per metric and turns it into a localized sentence.
+   ----------------------------------------------------------------------- */
+function fmtMonth(mo){
+  const y = +String(mo).slice(0,4), m = +String(mo).slice(5,7);
+  if (!y || !m) return String(mo);
+  try { return new Date(Date.UTC(y, m-1, 1))
+    .toLocaleString(LANG==="zh"?"zh-CN":"en-US", {month:"long", year:"numeric"}); }
+  catch(e){ return String(mo); }
+}
+function _fmtVal(v, digits){
+  return digits === 0 ? fmtInt(Math.round(v)) : (Math.round(v*Math.pow(10,digits))/Math.pow(10,digits)).toFixed(digits);
+}
+function computeAnomalies(r){
+  const defs = [
+    {key:"rhr",    s:r.resting_hr, unit:" "+t("kpi.bpm"), digits:0},
+    {key:"hrv",    s:r.hrv,        unit:" ms",            digits:0},
+    {key:"sleep",  s:r.sleep,      unit:" "+t("unit.h"),  digits:1},
+    {key:"steps",  s:r.steps_daily,unit:"",               digits:0},
+    {key:"weight", s:r.weight,     unit:" "+((r.meta&&r.meta.weight_unit)||"kg"), digits:1},
+  ];
+  const out = [];
+  for (const d of defs){
+    if (!d.s || !d.s.x || !d.s.x.length) continue;
+    const hits = detectAnomalies(d.s, {z:2, minMonths:6});
+    if (hits.length) out.push(Object.assign({metric:d.key, unit:d.unit, digits:d.digits}, hits[0]));
+  }
+  out.sort((a,b)=> Math.abs(b.z) - Math.abs(a.z));
+  return out;
+}
+function renderAnomalies(r){
+  const sec = document.getElementById("anomSec");
+  const grid = document.getElementById("anomGrid");
+  if (!sec || !grid) return;
+  const found = computeAnomalies(r);
+  if (!found.length){ sec.style.display = "none"; return; }
+  sec.style.display = "";
+  grid.innerHTML = found.map(f=>{
+    const metric = t("anom.m."+f.metric);
+    const dir = t(f.dir === "up" ? "anom.up" : "anom.down");
+    const sentence = tf("anom.sentence", {
+      metric, dir,
+      value: _fmtVal(f.value, f.digits) + f.unit,
+      baseline: _fmtVal(f.baseline, f.digits) + f.unit,
+      month: fmtMonth(f.month),
+    });
+    return `<div class="anom anom-${f.dir}"><div class="anom-text">${esc(sentence)}</div></div>`;
+  }).join("");
+}
+
+/* --- activity / sleep heatmap (GitHub-contributions style) --------------
+   A calendar grid (weekday rows x week columns) of a daily metric. Period-
+   aware (uses the currently shown series). SVG heatmap trace only.
+   ----------------------------------------------------------------------- */
+function _heatTick(mo){
+  const y = +mo.slice(0,4), m = +mo.slice(5,7);
+  if (m === 1) return String(y);
+  try { return new Date(Date.UTC(y, m-1, 1)).toLocaleString(LANG==="zh"?"zh-CN":"en-US", {month:"short"}); }
+  catch(e){ return mo; }
+}
+function _heatMatrix(series){
+  if (!series || !series.x || !series.x.length) return null;
+  const map = new Map(); let dmin = null, dmax = null;
+  for (let i=0;i<series.x.length;i++){
+    const d = String(series.x[i]); if (d.length !== 10) continue;
+    const v = series.y[i]; if (typeof v !== "number" || !isFinite(v)) continue;
+    map.set(d, v);
+    if (dmin === null || d < dmin) dmin = d;
+    if (dmax === null || d > dmax) dmax = d;
+  }
+  if (dmin === null) return null;
+  const ms  = d => Date.UTC(+d.slice(0,4), +d.slice(5,7)-1, +d.slice(8,10));
+  const dow = d => ((new Date(ms(d)).getUTCDay()) + 6) % 7; // 0=Mon
+  const startMs = ms(dmin) - dow(dmin)*86400000;
+  const endMs = ms(dmax);
+  const nWeeks = Math.floor((endMs - startMs) / (7*86400000)) + 1;
+  const z = Array.from({length:7}, ()=> new Array(nWeeks).fill(null));
+  const cd = Array.from({length:7}, ()=> new Array(nWeeks).fill(""));
+  const vals = [];
+  for (let w=0; w<nWeeks; w++){
+    for (let row=0; row<7; row++){
+      const curMs = startMs + (w*7 + row)*86400000;
+      if (curMs < ms(dmin) || curMs > endMs) continue;
+      const cur = new Date(curMs).toISOString().slice(0,10);
+      cd[row][w] = cur;
+      const val = map.has(cur) ? map.get(cur) : 0;
+      z[row][w] = val;
+      if (map.has(cur)) vals.push(val);
+    }
+  }
+  const ticks = [], labels = []; let lastMo = "";
+  for (let w=0; w<nWeeks; w++){
+    const mon = new Date(startMs + w*7*86400000).toISOString().slice(0,7);
+    if (mon !== lastMo){ ticks.push(w); labels.push(mon); lastMo = mon; }
+  }
+  vals.sort((a,b)=>a-b);
+  const zmax = vals.length ? vals[Math.min(vals.length-1, Math.floor(vals.length*0.95))] : 1;
+  return { z, cd, nWeeks, ticks, labels, zmax: zmax || 1 };
+}
+function renderHeatmap(r){
+  const sec = document.getElementById("heatSec");
+  if (!sec) return;
+  if (!window.Plotly){ sec.style.display = "none"; return; }
+  const sel = document.getElementById("heatPick");
+  const metric = (sel && sel.value) ? sel.value : "steps";
+  const series = metric === "sleep" ? r.sleep : r.steps_daily;
+  const M = series ? _heatMatrix(series) : null;
+  if (!M || M.nWeeks < 3){ sec.style.display = "none"; return; }
+  sec.style.display = "";
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  const empty = dark ? "#2c2c2e" : "#ebedf0";
+  const scale = [[0,empty],[0.01,dark?"#3a1f24":"#ffd6db"],[0.35,"#fb8a96"],[0.7,"#fa3c4c"],[1,"#c81e2c"]];
+  const wd = WEEKDAY_KEYS.map(k=>t(k));
+  const unit = metric === "sleep" ? t("unit.h") : t("axis.steps");
+  const hov = metric === "sleep" ? "%{customdata}<br>%{z:.1f} "+unit+"<extra></extra>"
+                                 : "%{customdata}<br>%{z:,.0f} "+unit+"<extra></extra>";
+  Plotly.newPlot("c_heat", [{
+    type:"heatmap", z:M.z, customdata:M.cd,
+    x: M.z[0].map((_,i)=>i), y:[0,1,2,3,4,5,6],
+    xgap:3, ygap:3, zmin:0, zmax:M.zmax,
+    colorscale:scale, showscale:false, hoverongaps:false,
+    hovertemplate:hov,
+  }], Object.assign(baseLayout(""), {
+    height:200, margin:{l:44,r:12,t:8,b:26},
+    xaxis:{tickmode:"array", tickvals:M.ticks, ticktext:M.labels.map(_heatTick),
+           tickfont:{size:11}, showgrid:false, zeroline:false, ticks:"", fixedrange:true},
+    yaxis:{tickmode:"array", tickvals:[0,1,2,3,4,5,6], ticktext:wd, autorange:"reversed",
+           tickfont:{size:11}, showgrid:false, zeroline:false, ticks:"", fixedrange:true},
+  }), PLOT_CFG);
+  fillInsight("i_heat", tf("ins.heat", {metric: t("heat.m."+metric)}));
 }
 
 const COL = {accent:"#fa3c4c", blue:"#2e7fff", green:"#34c759", purple:"#8a5cf6", orange:"#ff9f0a", grid:"#e9edf2", ink:"#1d1d1f"};
@@ -1242,11 +1441,13 @@ function computeWeekday(r){
 const NAV_ITEMS = [
   ["kpis", "nav.overview"],
   ["recordsSec", "rec.title"],
+  ["anomSec", "anom.title"],
   ["csec-activity", "sec.activity"],
   ["csec-heart", "sec.heart"],
   ["csec-sleep", "sec.sleep"],
   ["csec-workouts", "sec.workouts"],
   ["csec-body", "sec.body"],
+  ["heatSec", "heat.title"],
   ["patternsSec", "nav.patterns"],
   ["mapSec", "nav.routes"],
   ["aiPanel", "nav.assistant"],
@@ -1469,6 +1670,7 @@ function renderCharts(r){
     const ey = r.energy_month.y, etot = ey.reduce((a,b)=>a+b,0);
     fillInsight("i_en", tf("ins.energy", {total:fmtInt(etot), avgmo:fmtInt(Math.round(_mean(ey)))}));
   }
+  renderHeatmap(r);
 }
 
 /* =====================================================================
@@ -2341,7 +2543,14 @@ function buildHealthSummary(){
   // top cross-metric patterns (associations only)
   const corrs = computeCorrelations(LAST_RESULT).slice(0, 3);
   corrs.forEach(f=>{
-    lines.push("Pattern: " + f.a + " vs " + f.b + " correlate r=" + f.r.toFixed(2) + " (n=" + f.n + " days)");
+    const lag = f.lag ? " (next-day)" : "";
+    lines.push("Pattern" + lag + ": " + f.a + " vs " + f.b + " correlate r=" + f.r.toFixed(2) + " (n=" + f.n + " days)");
+  });
+  // notable month-over-month shifts (robust z-score on monthly means)
+  const anoms = computeAnomalies(LAST_RESULT).slice(0, 4);
+  anoms.forEach(a=>{
+    lines.push("Notable change: " + a.metric + " " + a.dir + " to " +
+      _fmtVal(a.value, a.digits) + " in " + a.month + " (usual " + _fmtVal(a.baseline, a.digits) + ")");
   });
   return lines.join("\n");
 }
@@ -2405,6 +2614,72 @@ function renderAiStatic(){
   });
 }
 
+// Shared streaming client for /api/chat. Emits incremental text via onDelta and
+// resolves with the full reply. Falls back to a plain JSON {reply}/{error} body
+// when the server didn't stream (e.g. an error or an environment without SSE).
+async function streamChat(payload, onDelta){
+  const resp = await fetch("/api/chat", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify(payload),
+  });
+  const ct = resp.headers.get("content-type") || "";
+  if (!resp.ok || ct.indexOf("text/event-stream") === -1 || !resp.body){
+    const data = await resp.json().catch(()=>({}));
+    if (!resp.ok || !data.reply){
+      const err = new Error(data.error || "AI_ERROR"); err.userError = data.error; throw err;
+    }
+    if (onDelta) onDelta(data.reply);
+    return data.reply;
+  }
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder("utf-8");
+  let buf = "", full = "";
+  while (true){
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, {stream:true});
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) !== -1){
+      const frame = buf.slice(0, idx); buf = buf.slice(idx + 2);
+      const line = frame.split("\n").find(l => l.indexOf("data:") === 0);
+      if (!line) continue;
+      const json = line.slice(5).trim();
+      if (!json) continue;
+      let obj; try { obj = JSON.parse(json); } catch(e){ continue; }
+      if (obj.error){ const err = new Error(obj.error); err.userError = obj.error; throw err; }
+      if (obj.delta){ full += obj.delta; if (onDelta) onDelta(obj.delta); }
+    }
+  }
+  return full;
+}
+
+// AI auto-narrative: a short, proactive "here's your year" written from the same
+// summary stats the assistant sees. Best-effort — hidden if it can't be reached.
+let _narrToken = 0;
+async function renderNarrative(){
+  const card = document.getElementById("aiNarr");
+  const body = document.getElementById("aiNarrBody");
+  if (!card || !body || !LAST_RESULT) return;
+  const token = ++_narrToken;
+  card.style.display = "";
+  card.classList.add("loading");
+  body.textContent = t("narr.loading");
+  let acc = "";
+  try {
+    await streamChat(
+      { question: t("narr.prompt"), summary: buildHealthSummary(), history: [], lang: LANG },
+      delta => { if (token !== _narrToken) return; acc += delta; body.innerHTML = mdToHtml(acc); }
+    );
+    if (token !== _narrToken) return;
+    card.classList.remove("loading");
+    if (!acc.trim()){ card.style.display = "none"; }
+  } catch(e){
+    if (token !== _narrToken) return;
+    card.style.display = "none";
+  }
+}
+
 async function sendAi(question){
   question = (question||"").trim();
   if (!question || AI_BUSY || !LAST_RESULT) return;
@@ -2416,35 +2691,30 @@ async function sendAi(question){
   txt.style.height = "auto";
 
   aiAppend("user", question);
-  const thinking = aiAppend("bot", t("ai.sending"));
+  const bubble = aiAppend("bot", t("ai.sending"));
+  const log = document.getElementById("aiLog");
+  let acc = "";
 
   try{
-    const resp = await fetch("/api/chat", {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({
-        question,
-        summary: buildHealthSummary(),
-        history: AI_HISTORY.slice(-8),
-        lang: LANG,
-      }),
-    });
-    const data = await resp.json().catch(()=>({}));
-    if (!resp.ok || !data.reply){
-      thinking.classList.add("err");
-      thinking.textContent = data.error ? (t("ai.error") + " (" + data.error + ")") : t("ai.error");
+    const full = await streamChat(
+      { question, summary: buildHealthSummary(), history: AI_HISTORY.slice(-8), lang: LANG },
+      delta => { acc += delta; bubble.innerHTML = mdToHtml(acc); log.scrollTop = log.scrollHeight; }
+    );
+    if (!full.trim()){
+      bubble.classList.add("err");
+      bubble.textContent = t("ai.error");
     } else {
-      thinking.innerHTML = mdToHtml(data.reply);
+      bubble.innerHTML = mdToHtml(full);
       AI_HISTORY.push({role:"user", text:question});
-      AI_HISTORY.push({role:"model", text:data.reply});
+      AI_HISTORY.push({role:"model", text:full});
     }
   } catch(e){
-    thinking.classList.add("err");
-    thinking.textContent = t("ai.error");
+    bubble.classList.add("err");
+    bubble.textContent = (e && e.userError) ? (t("ai.error") + " (" + e.userError + ")") : t("ai.error");
   } finally {
     AI_BUSY = false;
     sendBtn.disabled = false;
-    document.getElementById("aiLog").scrollTop = 1e9;
+    log.scrollTop = log.scrollHeight;
   }
 }
 

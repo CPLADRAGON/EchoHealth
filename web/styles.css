@@ -3,6 +3,7 @@
     --grid:#e9edf2; --ink:#1d1d1f; --muted:#6e6e73;
     --parchment:#f5f5f7; --hairline:rgba(0,0,0,.10); --canvas:#fff;
     --accent-soft:rgba(250,60,76,.07); --map-bg:#eef1f4;
+    --accent-text:#d11a2a;
     --chart-bg:#ffffff; --chart-grid:#e9edf2; --chart-ink:#1d1d1f;
     --code-bg:rgba(0,0,0,.06);
   }
@@ -10,6 +11,7 @@
     --grid:#2c2c2e; --ink:#f2f2f7; --muted:#9a9aa2;
     --parchment:#000000; --hairline:rgba(255,255,255,.14); --canvas:#1c1c1e;
     --accent-soft:rgba(250,60,76,.16); --map-bg:#2c2c2e;
+    --accent-text:#ff8a94;
     --chart-bg:#1c1c1e; --chart-grid:#2c2c2e; --chart-ink:#f2f2f7;
     --code-bg:rgba(255,255,255,.12);
   }
@@ -285,7 +287,7 @@
   .ai-msg{font-size:14px;line-height:1.6;padding:10px 13px;border-radius:14px;max-width:88%;white-space:pre-wrap;word-wrap:break-word}
   .ai-msg.user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
   .ai-msg.bot{align-self:flex-start;background:var(--parchment);color:var(--ink);border-bottom-left-radius:5px}
-  .ai-msg.bot.err{background:var(--accent-soft);color:var(--accent);border:1px solid var(--hairline)}
+  .ai-msg.bot.err{background:var(--accent-soft);color:var(--accent-text);border:1px solid var(--hairline)}
   .ai-msg.bot p{margin:0 0 6px}
   .ai-msg.bot ul{margin:6px 0;padding-left:20px}
   .ai-msg.bot li{margin:2px 0}
@@ -396,3 +398,44 @@
     .modal{padding:26px 22px 22px}
     .modal.preview{padding:0;max-height:92vh}
   }
+  /* ---- sample (demo) ghost button ---- */
+  .btn-ghost{
+    background:transparent !important; color:var(--ink) !important;
+    border:1.5px solid var(--hairline) !important; margin-top:12px !important; margin-left:8px;
+  }
+  .btn-ghost:hover{border-color:var(--accent) !important}
+
+  /* ---- AI auto-narrative card ---- */
+  .ai-narr{
+    margin:18px 0 0;background:var(--canvas);border:1px solid var(--hairline);
+    border-left:3px solid var(--accent);border-radius:14px;padding:16px 18px;
+  }
+  .ai-narr h3{margin:0 0 6px;font-size:15px;font-weight:600;letter-spacing:-.2px}
+  .ai-narr-body{font-size:15px;line-height:1.55;color:var(--ink)}
+  .ai-narr.loading .ai-narr-body{color:var(--muted)}
+  .ai-narr .ai-disc{margin-top:8px}
+
+  /* ---- anomalies / notable changes ---- */
+  .anoms{margin:26px 0 0}
+  .anoms h3{margin:0 0 4px;font-size:17px;font-weight:600;letter-spacing:-.2px}
+  .anom-sub{margin:0 0 12px;font-size:13px;color:var(--muted)}
+  .anom-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+  .anom{
+    background:var(--canvas);border:1px solid var(--hairline);border-radius:14px;
+    padding:14px 16px;border-left:3px solid var(--muted);font-size:14px;line-height:1.5;
+  }
+  .anom-up{border-left-color:var(--accent)}
+  .anom-down{border-left-color:var(--blue)}
+  .anom-text{color:var(--ink)}
+
+  /* ---- activity / sleep heatmap ---- */
+  .heatsec{margin-top:24px}
+  .heatsec.card{padding:18px}
+  .heat-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:6px}
+  .heat-head .heat-titles h3{margin:0 0 2px;font-size:17px;font-weight:600;letter-spacing:-.2px}
+  .heat-head .heat-titles p{margin:0;font-size:13px;color:var(--muted)}
+  #heatPick{
+    background:var(--canvas);color:var(--ink);border:1px solid var(--hairline);
+    border-radius:10px;padding:7px 12px;font-family:inherit;font-size:13px;cursor:pointer;
+  }
+  #heatPick:hover{border-color:var(--accent)}

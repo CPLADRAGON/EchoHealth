@@ -15,6 +15,14 @@ parser. Nothing is uploaded, no account, no server. English / 中文 toggle, lig
 dark themes, PWA install, and a first-visit privacy + tutorial guide are built in.
 Works on desktop and mobile browsers.
 
+Highlights once your data loads: 14 interactive charts, a GitHub-style
+**activity/sleep calendar heatmap**, streaks & records, **notable-change
+(anomaly) detection**, same-day **and next-day (lagged) correlations**, a GPS
+routes map, PNG/PDF report export, and a year-in-review recap. New here? Hit
+**Try with sample data** to explore the whole dashboard with a synthetic export
+(no file needed). The AI assistant also writes a short auto-narrative of your
+year and streams its answers token-by-token.
+
 **Try locally:**
 
 ```powershell
@@ -52,13 +60,18 @@ mainland China, but the rest of the app still runs locally.)
 
 Static site under `web/`, no build step — deployed as-is.
 
-- `web/index.html` — the whole app (UI, CSS, rendering, charts, map, recap, AI client).
+- `web/index.html` — markup + head; loads the app scripts.
+- `web/app.js` — the app logic (UI, CSS hooks, rendering, charts, map, recap, AI client,
+  anomaly panel, lagged-correlation patterns, activity/sleep heatmap, SSE AI streaming).
 - `web/parser.js` — the **pure parsing core**: streaming-tag aggregation, metric series,
-  fitness-age + sleep-consistency math, GPS route helpers. DOM-free and dependency-free,
-  loaded as a classic `<script>` before the inline app script and **unit-tested in Node**.
-  The browser-only streaming + unzip wrapper (`parseHealthExport`) stays in `index.html`
+  fitness-age + sleep-consistency math, GPS route helpers, plus the pure analytics
+  (`detectAnomalies`, `correlate`/`pearson`/`shiftDay`). DOM-free and dependency-free,
+  loaded as a classic `<script>` before the app script and **unit-tested in Node**.
+  The browser-only streaming + unzip wrapper (`parseHealthExport`) stays in `app.js`
   and calls into this module.
-- `web/api/chat.js` — Vercel serverless proxy to Gemini (API key server-side only).
+- `web/sample.js` — builds a synthetic demo `export.zip` in-browser (`buildSampleFile()`)
+  for the "Try with sample data" button.
+- `web/api/chat.js` — Vercel serverless proxy to Gemini, SSE-streamed (API key server-side only).
 - `web/service-worker.js` + `manifest.webmanifest` + icons — PWA shell.
 - `web/vercel.json` — clean URLs + security headers (Content-Security-Policy, etc.).
 
@@ -74,7 +87,8 @@ node --test    # or: npm test
 ```
 
 CI runs it on every push/PR to `main` (`.github/workflows/ci.yml`). When you change
-`web/parser.js`, add or update a test in `tests/parser.test.js`.
+`web/parser.js`, add or update a test in `tests/parser.test.js`. `tests/sample.test.js`
+additionally runs the demo generator end-to-end through the parser.
 
 ---
 

@@ -43,8 +43,9 @@
 <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <!-- Pure parsing core (also unit-tested in Node). Must load before the main script.
      The ?v query busts stale browser/SW caches so the parser + app load as a matching set. -->
-<script src="parser.js?v=8"></script>
-<link rel="stylesheet" href="styles.css?v=8" />
+<script src="parser.js?v=9"></script>
+<script src="sample.js?v=9"></script>
+<link rel="stylesheet" href="styles.css?v=9" />
 </head>
 <body>
 
@@ -177,6 +178,7 @@
     <p data-i="drop.hint"></p>
     <button class="btn" id="pickBtn" data-i="drop.button"></button>
     <div class="formats" data-i="drop.formats"></div>
+    <button class="btn btn-ghost" id="sampleBtn" data-i="drop.sample"></button>
     <input type="file" id="fileInput" accept=".xml,.zip" />
   </div>
 
@@ -201,13 +203,39 @@
       </span>
     </div>
     <nav class="secnav" id="secNav" aria-label="Sections"></nav>
+    <section class="ai-narr" id="aiNarr" style="display:none">
+      <h3 data-i="narr.title"></h3>
+      <div class="ai-narr-body" id="aiNarrBody"></div>
+      <p class="ai-disc" data-i="ai.disclaimer"></p>
+    </section>
     <div class="kpis" id="kpis"></div>
     <section class="records" id="recordsSec" style="display:none">
       <h3 data-i="rec.title"></h3>
       <div class="rec-grid" id="recGrid"></div>
     </section>
+    <section class="anoms" id="anomSec" style="display:none">
+      <h3 data-i="anom.title"></h3>
+      <p class="anom-sub" data-i="anom.sub"></p>
+      <div class="anom-grid" id="anomGrid"></div>
+    </section>
     <section class="charts" id="chartsSec">
       <div class="grid" id="chartGrid"></div>
+    </section>
+
+    <!-- activity / sleep calendar heatmap -->
+    <section class="heatsec card" id="heatSec" style="display:none">
+      <div class="heat-head">
+        <div class="heat-titles">
+          <h3 data-i="heat.title"></h3>
+          <p class="csub" data-i="heat.sub"></p>
+        </div>
+        <select id="heatPick" aria-label="metric">
+          <option value="steps" data-i="heat.m.steps"></option>
+          <option value="sleep" data-i="heat.m.sleep"></option>
+        </select>
+      </div>
+      <div class="plotwrap" id="c_heat"></div>
+      <p class="insight" id="i_heat"></p>
     </section>
 
     <!-- patterns / correlations -->
@@ -259,6 +287,6 @@
   <div class="wrap" data-i="footer.text"></div>
 </footer>
 
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

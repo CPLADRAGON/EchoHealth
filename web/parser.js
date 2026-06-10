@@ -41,8 +41,26 @@ const RE_WDUR  = /\bduration="([^"]*)"/;
 const RE_WDURU = /\bdurationUnit="([^"]*)"/;
 function av(tag, re){ const m = re.exec(tag); return m ? m[1] : null; }
 
+// Tolerant numeric parse for value-like attributes. Apple normally writes a
+// plain "12.5", but some locale exports use a decimal comma ("12,5"). Convert
+// only a clean "int,frac" form so we never mangle ordinary numbers, then fall
+// back to parseFloat (which yields NaN for missing/garbage, handled by callers).
+function numVal(s){
+  if (s == null) return NaN;
+  if (typeof s === "string"){
+    const m = /^\s*(-?\d+),(\d+)\s*$/.exec(s);
+    if (m) s = m[1] + "." + m[2];
+  }
+  return parseFloat(s);
+}
+
 // "YYYY-MM-DD HH:MM:SS ..." -> epoch ms, ignoring the timezone suffix.
-// Both start and end carry the same offset, so durations are correct.
+// Both start and end carry the same offset, so durations are correct. Known
+// tradeoff: absolute day-bucketing uses the local wall-clock day as written in
+// the export, not UTC, so a late-night entry can land on the adjacent day vs a
+// strict-UTC reading. We accept this because the wall-clock day is what the
+// user actually experienced; it can shift a midnight workout in streak/weekday
+// views by one day.
 function naiveMs(s){
   return Date.UTC(+s.slice(0,4), +s.slice(5,7)-1, +s.slice(8,10),
                   +s.slice(11,13), +s.slice(14,16), +s.slice(17,19));
@@ -88,7 +106,7 @@ function handleTag(A, tag){
       // re-aggregate. Stores count + total minutes per (month, type).
       const wt = av(tag, RE_WTYPE) || "Other";
       let mins = 0;
-      const dur = parseFloat(av(tag, RE_WDUR));
+      const dur = numVal(av(tag, RE_WDUR));
       if (!isNaN(dur)){
         const u = (av(tag, RE_WDURU) || "min").toLowerCase();
         mins = u.indexOf("sec") !== -1 ? dur/60 : (u.indexOf("hr") !== -1 || u.indexOf("hour") !== -1 ? dur*60 : dur);
@@ -114,7 +132,7 @@ function handleTag(A, tag){
   }
   const col = SUM_TYPES[rtype];
   if (col && day){
-    const v = parseFloat(av(tag, RE_VALUE));
+    const v = numVal(av(tag, RE_VALUE));
     if (!isNaN(v)){
       if (col === "steps") A.day_steps.set(day, (A.day_steps.get(day) || 0) + v);
       else if (col === "distance") A.day_dist.set(day, (A.day_dist.get(day) || 0) + v);
@@ -122,18 +140,18 @@ function handleTag(A, tag){
       else if (col === "flights") A.day_flights.set(day, (A.day_flights.get(day) || 0) + v);
     }
   } else if (rtype === RHR_TYPE && day){
-    const v = parseFloat(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.rhr, day, v);
+    const v = numVal(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.rhr, day, v);
   } else if (rtype === HRV_TYPE && day){
-    const v = parseFloat(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.hrv, day, v);
+    const v = numVal(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.hrv, day, v);
   } else if (rtype === WEIGHT_TYPE && day){
-    const v = parseFloat(av(tag, RE_VALUE));
+    const v = numVal(av(tag, RE_VALUE));
     if (!isNaN(v)){ pushList(A.weight, day, v); if (!A.weight_unit) A.weight_unit = av(tag, RE_UNIT); }
   } else if (rtype === VO2_TYPE && day){
-    const v = parseFloat(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.vo2, day, v);
+    const v = numVal(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.vo2, day, v);
   } else if (rtype === BP_SYS_TYPE && day){
-    const v = parseFloat(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.bp_sys, day, v);
+    const v = numVal(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.bp_sys, day, v);
   } else if (rtype === BP_DIA_TYPE && day){
-    const v = parseFloat(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.bp_dia, day, v);
+    const v = numVal(av(tag, RE_VALUE)); if (!isNaN(v)) pushList(A.bp_dia, day, v);
   } else if (rtype === SLEEP_TYPE){
     const val = av(tag, RE_VALUE) || "";
     if (val.indexOf("Asleep") !== -1){
@@ -356,6 +374,93 @@ function _sleepConsistency(onArr, wkArr){
   return Math.max(0, Math.min(100, Math.round(100 - avg/1.5)));
 }
 
+// ---- anomaly / change detection -------------------------------------------
+// Flags months whose mean for a metric drifts clearly from that metric's
+// typical month. Uses a robust median + MAD (median absolute deviation) z-score
+// so the very shifts we are hunting for don't inflate the baseline the way a
+// plain mean/std would. Pure: works on any {x:'YYYY-MM-DD'|'YYYY-MM', y:[]}
+// series, daily or monthly.
+function _monthlyMeans(series){
+  if (!series || !series.x || !series.x.length) return { months: [], means: [] };
+  const sum = new Map(), cnt = new Map();
+  for (let i = 0; i < series.x.length; i++){
+    const k = String(series.x[i]);
+    const mo = k.length >= 7 ? k.slice(0, 7) : null;
+    const v = series.y[i];
+    if (!mo || !/^\d{4}-\d{2}$/.test(mo) || typeof v !== "number" || !isFinite(v)) continue;
+    sum.set(mo, (sum.get(mo) || 0) + v);
+    cnt.set(mo, (cnt.get(mo) || 0) + 1);
+  }
+  const months = [...sum.keys()].sort();
+  const means = months.map(m => sum.get(m) / cnt.get(m));
+  return { months, means };
+}
+function _median(a){
+  if (!a.length) return NaN;
+  const s = [...a].sort((x, y) => x - y), n = s.length, mid = n >> 1;
+  return n % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+// Returns the notable months as [{month, value, baseline, delta, z, dir}],
+// strongest first. `z` is the robust z-score; `dir` is "up" or "down".
+function detectAnomalies(series, opts){
+  opts = opts || {};
+  const zThr = opts.z != null ? opts.z : 2.0;
+  const minMonths = opts.minMonths != null ? opts.minMonths : 6;
+  const { months, means } = _monthlyMeans(series);
+  if (months.length < minMonths) return [];
+  const med = _median(means);
+  let mad = _median(means.map(v => Math.abs(v - med))) * 1.4826;
+  if (!(mad > 0)){
+    const mu = means.reduce((a, b) => a + b, 0) / means.length;
+    mad = Math.sqrt(means.reduce((a, b) => a + (b - mu) * (b - mu), 0) / means.length);
+  }
+  if (!(mad > 0)) return [];
+  const out = [];
+  for (let i = 0; i < months.length; i++){
+    const score = (means[i] - med) / mad;
+    if (Math.abs(score) >= zThr){
+      out.push({ month: months[i], value: means[i], baseline: med,
+                 delta: means[i] - med, z: score, dir: score > 0 ? "up" : "down" });
+    }
+  }
+  out.sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+  return out;
+}
+
+// ---- correlation helpers (shared with the app.js patterns panel) ----------
+function pearson(xs, ys){
+  const n = Math.min(xs.length, ys.length); if (n < 2) return 0;
+  let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+  for (let i = 0; i < n; i++){ const a = xs[i], b = ys[i]; sx += a; sy += b; sxx += a * a; syy += b * b; sxy += a * b; }
+  const cov = sxy - sx * sy / n, vx = sxx - sx * sx / n, vy = syy - sy * sy / n;
+  if (vx <= 0 || vy <= 0) return 0;
+  return cov / Math.sqrt(vx * vy);
+}
+// Map a series to day -> value, keeping only daily ("YYYY-MM-DD") keys.
+function seriesDayMap(s){
+  const m = new Map();
+  if (!s || !s.x) return m;
+  for (let i = 0; i < s.x.length; i++){ if (String(s.x[i]).length === 10) m.set(s.x[i], s.y[i]); }
+  return m;
+}
+// Add `lag` days to a "YYYY-MM-DD" string (UTC, timezone-free).
+function shiftDay(day, lag){
+  const ms = Date.UTC(+day.slice(0, 4), +day.slice(5, 7) - 1, +day.slice(8, 10)) + lag * 86400000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+// Pair value of A on day d with value of B on day d+lag, then correlate.
+// lag 0 = same-day association; lag 1 = "A precedes B the next day".
+function correlate(seriesA, seriesB, lag){
+  lag = lag || 0;
+  const mapA = seriesDayMap(seriesA), mapB = seriesDayMap(seriesB);
+  const xs = [], ys = [];
+  for (const [day, va] of mapA){
+    const key = lag ? shiftDay(day, lag) : day;
+    if (mapB.has(key)){ xs.push(va); ys.push(mapB.get(key)); }
+  }
+  return { r: pearson(xs, ys), n: xs.length, xs, ys };
+}
+
 // ---- GPS route helpers (workout-routes/*.gpx inside export.zip) ----
 const MAX_ROUTE_PTS = 300; // decimation target — invisible at map zoom, tiny in memory
 const TRKPT_RE = /<trkpt\b[^>]*>/g;
@@ -433,9 +538,11 @@ function routeSortKey(fname){
 if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     SUM_TYPES, RHR_TYPE, HRV_TYPE, SLEEP_TYPE, WEIGHT_TYPE, VO2_TYPE,
-    BP_SYS_TYPE, BP_DIA_TYPE, TAG_RE, av, naiveMs, newAgg, pushList, scanMe,
+    BP_SYS_TYPE, BP_DIA_TYPE, TAG_RE, av, numVal, naiveMs, newAgg, pushList, scanMe,
     handleTag, finalize, _fitnessAge, _circStdevMin, _sleepConsistency,
     workoutTypeName, aggWorkoutTypes,
+    detectAnomalies, _monthlyMeans, _median,
+    pearson, seriesDayMap, shiftDay, correlate,
     MAX_ROUTE_PTS, extractRoutePoints, decimate, routeLabel, routeSortKey,
     routeDurationSec, routePathKm,
   };

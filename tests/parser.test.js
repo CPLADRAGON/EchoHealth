@@ -239,3 +239,86 @@ test("naiveMs ignores timezone, computes duration", () => {
   const ms2 = P.naiveMs("2024-01-02 01:00:00 +0800");
   assert.strictEqual((ms2 - ms1) / 3600000, 2); // 2 hours regardless of TZ text
 });
+
+
+/* ---- messy real-world exports + numeric tolerance ---- */
+test("numVal: tolerates locale decimal commas, leaves normal numbers", () => {
+  assert.strictEqual(P.numVal("12.5"), 12.5);
+  assert.strictEqual(P.numVal("12,5"), 12.5);
+  assert.strictEqual(P.numVal("1000"), 1000);
+  assert.ok(Number.isNaN(P.numVal(null)));
+});
+
+test("messy export: comma-decimal weight value parses", () => {
+  const r = run([
+    rec('type="HKQuantityTypeIdentifierBodyMass" startDate="2024-01-01 08:00:00 +0000" value="70,5" unit="kg"'),
+  ]);
+  assert.deepStrictEqual(r.weight.x, ["2024-01-01"]);
+  assert.deepStrictEqual(r.weight.y, [70.5]);
+});
+
+test("messy export: missing value and missing date are ignored, no crash", () => {
+  const r = run([
+    rec('type="HKQuantityTypeIdentifierStepCount" startDate="2024-01-01 08:00:00 +0000"'),
+    rec('type="HKQuantityTypeIdentifierStepCount" value="500"'),
+    rec('type="HKQuantityTypeIdentifierStepCount" startDate="2024-01-02 09:00:00 +0000" value="2000"'),
+  ]);
+  assert.deepStrictEqual(r.steps_daily.x, ["2024-01-02"]);
+  assert.deepStrictEqual(r.steps_daily.y, [2000]);
+});
+
+/* ---- anomaly / change detection ---- */
+test("detectAnomalies: flags a sustained monthly jump", () => {
+  const x = [], y = [];
+  const months = ["01","02","03","04","05","06","07","08","09","10","11","12"];
+  months.forEach((mo, i) => {
+    for (let d = 1; d <= 5; d++){
+      x.push(`2024-${mo}-0${d}`);
+      y.push(i === 6 ? 70 : 58 + (d % 2));
+    }
+  });
+  const a = P.detectAnomalies({ x, y }, { z: 2, minMonths: 6 });
+  assert.ok(a.length >= 1);
+  assert.strictEqual(a[0].month, "2024-07");
+  assert.strictEqual(a[0].dir, "up");
+});
+
+test("detectAnomalies: stable series yields nothing", () => {
+  const x = [], y = [];
+  ["01","02","03","04","05","06","07","08"].forEach(mo => {
+    for (let d = 1; d <= 5; d++){ x.push(`2024-${mo}-0${d}`); y.push(60 + (d % 2)); }
+  });
+  assert.deepStrictEqual(P.detectAnomalies({ x, y }, { z: 2, minMonths: 6 }), []);
+});
+
+test("detectAnomalies: too few months returns nothing", () => {
+  const r = P.detectAnomalies({ x: ["2024-01-01","2024-02-01"], y: [10, 99] }, { minMonths: 6 });
+  assert.deepStrictEqual(r, []);
+});
+
+/* ---- correlation helpers (same-day + lag) ---- */
+test("correlate: same-day perfect linear pair", () => {
+  const A = { x: ["2024-01-01","2024-01-02","2024-01-03"], y: [1, 2, 3] };
+  const B = { x: ["2024-01-01","2024-01-02","2024-01-03"], y: [2, 4, 6] };
+  const c = P.correlate(A, B, 0);
+  assert.strictEqual(c.n, 3);
+  assert.ok(Math.abs(c.r - 1) < 1e-9);
+});
+
+test("correlate: lag pairs day d with day d+1", () => {
+  const A = { x: ["2024-01-01","2024-01-02","2024-01-03"], y: [1, 2, 3] };
+  const B = { x: ["2024-01-02","2024-01-03","2024-01-04"], y: [2, 4, 6] };
+  const c = P.correlate(A, B, 1);
+  assert.strictEqual(c.n, 3);
+  assert.ok(Math.abs(c.r - 1) < 1e-9);
+});
+
+test("pearson: returns 0 for degenerate input", () => {
+  assert.strictEqual(P.pearson([1,1,1], [1,2,3]), 0);
+  assert.strictEqual(P.pearson([5], [5]), 0);
+});
+
+test("shiftDay: adds days across a month boundary (TZ-free)", () => {
+  assert.strictEqual(P.shiftDay("2024-01-31", 1), "2024-02-01");
+  assert.strictEqual(P.shiftDay("2024-03-01", -1), "2024-02-29");
+});
