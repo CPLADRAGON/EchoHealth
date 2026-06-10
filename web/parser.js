@@ -36,6 +36,9 @@ const RE_START = /\bstartDate="([^"]*)"/;
 const RE_END   = /\bendDate="([^"]*)"/;
 const RE_VALUE = /\bvalue="([^"]*)"/;
 const RE_UNIT  = /\bunit="([^"]*)"/;
+const RE_WTYPE = /\bworkoutActivityType="([^"]*)"/;
+const RE_WDUR  = /\bduration="([^"]*)"/;
+const RE_WDURU = /\bdurationUnit="([^"]*)"/;
 function av(tag, re){ const m = re.exec(tag); return m ? m[1] : null; }
 
 // "YYYY-MM-DD HH:MM:SS ..." -> epoch ms, ignoring the timezone suffix.
@@ -53,6 +56,7 @@ function newAgg(){
     weight: new Map(), vo2: new Map(), bp_sys: new Map(), bp_dia: new Map(),
     weight_unit: null, sex: null, meScanned: false,
     workouts_month: new Map(), workout_total: 0, rec: 0,
+    workout_types: new Map(),
     dmin: null, dmax: null,
   };
 }
@@ -80,6 +84,23 @@ function handleTag(A, tag){
       const mo = start.slice(0,7);
       A.workouts_month.set(mo, (A.workouts_month.get(mo) || 0) + 1);
       A.workout_total++;
+      // per-activity-type tally, keyed by month so the period filter can
+      // re-aggregate. Stores count + total minutes per (month, type).
+      const wt = av(tag, RE_WTYPE) || "Other";
+      let mins = 0;
+      const dur = parseFloat(av(tag, RE_WDUR));
+      if (!isNaN(dur)){
+        const u = (av(tag, RE_WDURU) || "min").toLowerCase();
+        mins = u.indexOf("sec") !== -1 ? dur/60 : (u.indexOf("hr") !== -1 || u.indexOf("hour") !== -1 ? dur*60 : dur);
+      } else {
+        const e = av(tag, RE_END);
+        if (e) mins = Math.max(0, (naiveMs(e) - naiveMs(start)) / 60000);
+      }
+      let byType = A.workout_types.get(mo);
+      if (!byType){ byType = new Map(); A.workout_types.set(mo, byType); }
+      let agg = byType.get(wt);
+      if (!agg){ agg = { count: 0, minutes: 0 }; byType.set(wt, agg); }
+      agg.count++; agg.minutes += mins;
     }
     return;
   }
@@ -186,6 +207,16 @@ function finalize(A){
   const wm_x = [...A.workouts_month.keys()].sort();
   const wm_y = wm_x.map(m => A.workouts_month.get(m));
 
+  // workout types: sorted by count desc, with friendly names + total minutes
+  const wt_list = aggWorkoutTypes(A.workout_types, null);
+  // month-keyed raw tally (friendly-named) so the period filter can re-aggregate
+  const wt_month = [];
+  for (const [mo, types] of A.workout_types){
+    const arr = [];
+    for (const [raw, agg] of types) arr.push({ type: workoutTypeName(raw), count: agg.count, minutes: agg.minutes });
+    wt_month.push({ month: mo, types: arr });
+  }
+
   // weight + VO2 max: per-day averages (line series)
   const wt_x = [...A.weight.keys()].sort();
   const wt_y = wt_x.map(d => Math.round(avg(A.weight.get(d)) * 10) / 10);
@@ -239,12 +270,57 @@ function finalize(A){
                             : { x: [], core: [], deep: [], rem: [], unspec: [] },
     sleep_clock: { x: sl_x, on: clk_on, wk: clk_wk },
     workouts_month: { x: wm_x, y: wm_y },
+    workout_types: wt_list,
+    workout_types_month: wt_month,
     weight: { x: wt_x, y: wt_y },
     vo2max: { x: vo_x, y: vo_y },
     blood_pressure: { x: bp_x, sys: bp_sys, dia: bp_dia },
     flights_month: { x: fl_x, y: fl_y },
     energy_month: { x: en_x, y: en_y },
   };
+}
+
+// Aggregate the month-keyed workout-type map into a flat, sorted list.
+// monthMap: Map("YYYY-MM" -> Map(rawType -> {count,minutes})). When `year`
+// is given, only months in that year are counted. Friendly names are merged
+// (e.g. both strength-training identifiers fold into "Strength").
+function aggWorkoutTypes(monthMap, year){
+  const byName = new Map();
+  for (const [mo, types] of monthMap){
+    if (year && mo.slice(0,4) !== year) continue;
+    for (const [raw, agg] of types){
+      const name = workoutTypeName(raw);
+      let cur = byName.get(name);
+      if (!cur){ cur = { type: name, count: 0, minutes: 0 }; byName.set(name, cur); }
+      cur.count += agg.count; cur.minutes += agg.minutes;
+    }
+  }
+  return [...byName.values()]
+    .map(o => ({ type: o.type, count: o.count, minutes: Math.round(o.minutes) }))
+    .sort((a, b) => b.count - a.count || b.minutes - a.minutes);
+}
+
+// Map Apple's HKWorkoutActivityType* identifier to a short friendly name.
+// Unknown/missing types fall back to a humanized version of the identifier.
+function workoutTypeName(raw){
+  if (!raw || raw === "Other") return "Other";
+  const id = raw.replace(/^HKWorkoutActivityType/, "");
+  const MAP = {
+    Running: "Running", Walking: "Walking", Cycling: "Cycling",
+    Swimming: "Swimming", Hiking: "Hiking", Yoga: "Yoga",
+    FunctionalStrengthTraining: "Strength", TraditionalStrengthTraining: "Strength",
+    HighIntensityIntervalTraining: "HIIT", Elliptical: "Elliptical",
+    Rowing: "Rowing", CoreTraining: "Core", Pilates: "Pilates",
+    Dance: "Dance", StairClimbing: "Stairs", Cooldown: "Cooldown",
+    MixedCardio: "Cardio", CrossTraining: "Cross-training",
+    Tennis: "Tennis", Basketball: "Basketball", Soccer: "Soccer",
+    Badminton: "Badminton", TableTennis: "Table tennis",
+    Golf: "Golf", Boxing: "Boxing", Climbing: "Climbing",
+  };
+  if (MAP[id]) return MAP[id];
+  // humanize: "SomethingElse" -> "Something else"
+  const spaced = id.replace(/([a-z])([A-Z])/g, "$1 $2");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
 }
 
 // Rough fitness-age estimate from VO2max: the age at which average VO2max
@@ -335,6 +411,7 @@ if (typeof module !== "undefined" && module.exports) {
     SUM_TYPES, RHR_TYPE, HRV_TYPE, SLEEP_TYPE, WEIGHT_TYPE, VO2_TYPE,
     BP_SYS_TYPE, BP_DIA_TYPE, TAG_RE, av, naiveMs, newAgg, pushList, scanMe,
     handleTag, finalize, _fitnessAge, _circStdevMin, _sleepConsistency,
+    workoutTypeName, aggWorkoutTypes,
     MAX_ROUTE_PTS, extractRoutePoints, decimate, routeLabel, routeSortKey,
   };
 }

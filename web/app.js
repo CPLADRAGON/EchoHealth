@@ -112,6 +112,11 @@ const I18N = {
     "chart.workouts.title": "Workouts by month",
     "chart.workouts.sub": "Number of recorded workouts per month",
     "chart.weekday.title": "Weekly rhythm",
+    "chart.wtype.title": "Workout types",
+    "chart.wtype.sub": "Breakdown of workouts by activity",
+    "chart.wtype.workouts": "workouts",
+    "chart.wtype.other": "Other",
+    "ins.wtype": "Your most frequent activity is {type} ({count} workouts). Across {kinds} activity types you’ve logged about {hours} hours.",
     "chart.weekday.sub": "Average steps by day of the week",
     "chart.weight.title": "Body weight",
     "chart.weight.sub": "Weight trend over time",
@@ -293,6 +298,11 @@ const I18N = {
     "chart.workouts.title": "每月训练",
     "chart.workouts.sub": "每月记录的训练次数",
     "chart.weekday.title": "每周节奏",
+    "chart.wtype.title": "运动类型",
+    "chart.wtype.sub": "按活动类型统计的锻炼分布",
+    "chart.wtype.workouts": "次",
+    "chart.wtype.other": "其他",
+    "ins.wtype": "你最常进行的运动是{type}（{count} 次）。在 {kinds} 种运动类型中，你共记录了约 {hours} 小时。",
     "chart.weekday.sub": "按星期几统计的平均步数",
     "chart.weight.title": "体重",
     "chart.weight.sub": "体重随时间的变化",
@@ -800,6 +810,19 @@ function filterResultByYear(r, year){
   const sum = a => a.reduce((p,c)=>p+c,0);
   const dates = steps.x.concat(rhr.x, hrv.x, sleep.x).sort();
   const latest_vo2 = vo2max.y.length ? vo2max.y[vo2max.y.length-1] : null;
+  // re-aggregate workout types for the selected year from the month-keyed tally
+  const wtMap = new Map();
+  for (const mt of (r.workout_types_month || [])){
+    if (String(mt.month).slice(0,4) !== year) continue;
+    for (const ti of mt.types){
+      let cur = wtMap.get(ti.type);
+      if (!cur){ cur = { type: ti.type, count: 0, minutes: 0 }; wtMap.set(ti.type, cur); }
+      cur.count += ti.count; cur.minutes += ti.minutes;
+    }
+  }
+  const wtypes = [...wtMap.values()]
+    .map(o => ({ type: o.type, count: o.count, minutes: Math.round(o.minutes) }))
+    .sort((a, b) => b.count - a.count || b.minutes - a.minutes);
   return {
     meta:{
       date_min: dates[0] || (year+"-01-01"),
@@ -816,6 +839,7 @@ function filterResultByYear(r, year){
     },
     steps_daily: steps, monthly_distance: dist, resting_hr: rhr,
     hrv, sleep, workouts_month: wo, routes,
+    workout_types: wtypes, workout_types_month: r.workout_types_month,
     sleep_stages: ss, sleep_clock: { x: ss.x.length ? ss.x : sleep.x, on: clOn, wk: clWk },
     weight, vo2max, blood_pressure: bp, flights_month, energy_month,
   };
@@ -1175,6 +1199,7 @@ function renderCharts(r){
   if (r.sleep.x.length) blocks.push(card("c_sleep","chart.sleep.title","chart.sleep.sub","i_sleep"));
   if (r.sleep_stages && r.sleep_stages.x.length) blocks.push(card("c_slst","chart.sleepStages.title","chart.sleepStages.sub","i_slst"));
   if (r.workouts_month.x.length) blocks.push(card("c_wo","chart.workouts.title","chart.workouts.sub","i_wo"));
+  if (r.workout_types && r.workout_types.length) blocks.push(card("c_wtype","chart.wtype.title","chart.wtype.sub","i_wtype"));
   const wk = computeWeekday(r);
   if (wk) blocks.push(card("c_wk","chart.weekday.title","chart.weekday.sub","i_wk"));
   if (r.weight && r.weight.x.length) blocks.push(card("c_wt","chart.weight.title","chart.weight.sub","i_wt"));
@@ -1263,6 +1288,36 @@ function renderCharts(r){
     const wmax = Math.max(...wy), wmonth = r.workouts_month.x[wy.indexOf(wmax)];
     fillInsight("i_wo", tf("ins.wo", {total:fmtInt(r.meta.workouts),
       avgmo:fmtInt(Math.round(_mean(wy))), month:wmonth, max:fmtInt(wmax)}));
+  }
+  if (r.workout_types && r.workout_types.length){
+    const wt = r.workout_types;
+    const palette = [COL.accent, COL.blue, COL.green, COL.purple, COL.orange,
+      "#00b8c4", "#ff6b9d", "#7c8aff", "#c9a227", "#5ac8fa"];
+    // collapse a long tail into "Other" so the donut stays legible
+    const MAXSLICE = 8;
+    let slices = wt;
+    if (wt.length > MAXSLICE){
+      const head = wt.slice(0, MAXSLICE-1);
+      const tail = wt.slice(MAXSLICE-1);
+      const otherCount = tail.reduce((a,b)=>a+b.count,0);
+      const otherMin = tail.reduce((a,b)=>a+b.minutes,0);
+      slices = head.concat([{type:t("chart.wtype.other"), count:otherCount, minutes:otherMin}]);
+    }
+    Plotly.newPlot("c_wtype", [{
+      type:"pie", hole:0.55,
+      labels: slices.map(s=>s.type), values: slices.map(s=>s.count),
+      marker:{colors: slices.map((_,i)=>palette[i % palette.length])},
+      textposition:"inside", texttemplate:"%{label}<br>%{percent}",
+      hovertemplate:"%{label}<br>%{value} ("+t("chart.wtype.workouts")+")<extra></extra>",
+      sort:false,
+    }], Object.assign(baseLayout(""), {
+      margin:{l:10,r:10,t:10,b:10}, showlegend:false,
+    }), PLOT_CFG);
+    const top = wt[0];
+    const hrs = Math.round(top.minutes/60);
+    fillInsight("i_wtype", tf("ins.wtype", {
+      type:top.type, count:fmtInt(top.count), kinds:fmtInt(wt.length), hours:fmtInt(hrs),
+    }));
   }
   if (wk){
     const labels = WEEKDAY_KEYS.map(k=>t(k));
@@ -1359,7 +1414,7 @@ function loadJsPdf(){
 const CHART_EXPORT = [
   ["c_steps","i_steps"], ["c_dist","i_dist"], ["c_rhr","i_rhr"],
   ["c_hrv","i_hrv"], ["c_sleep","i_sleep"], ["c_slst","i_slst"], ["c_wo","i_wo"],
-  ["c_wk","i_wk"], ["c_wt","i_wt"], ["c_vo2","i_vo2"],
+  ["c_wtype","i_wtype"], ["c_wk","i_wk"], ["c_wt","i_wt"], ["c_vo2","i_vo2"],
   ["c_bp","i_bp"], ["c_fl","i_fl"], ["c_en","i_en"],
 ];
 

@@ -73,6 +73,50 @@ test("workout siblings are NOT counted as workouts", () => {
   assert.strictEqual(r.meta.workouts, 1, "only the <Workout> counts");
 });
 
+test("workout types: tally by activity type, sorted by count, with minutes", () => {
+  const r = run([
+    wo('workoutActivityType="HKWorkoutActivityTypeRunning" startDate="2024-01-01 08:00:00 +0000" duration="30" durationUnit="min"'),
+    wo('workoutActivityType="HKWorkoutActivityTypeRunning" startDate="2024-01-03 08:00:00 +0000" duration="40" durationUnit="min"'),
+    wo('workoutActivityType="HKWorkoutActivityTypeWalking" startDate="2024-01-02 08:00:00 +0000" duration="60" durationUnit="min"'),
+  ]);
+  assert.strictEqual(r.workout_types.length, 2);
+  assert.deepStrictEqual(r.workout_types[0], { type: "Running", count: 2, minutes: 70 });
+  assert.deepStrictEqual(r.workout_types[1], { type: "Walking", count: 1, minutes: 60 });
+});
+
+test("workout types: missing activity type → Other; duration from end-start when absent", () => {
+  const r = run([
+    wo('startDate="2024-01-01 08:00:00 +0000" endDate="2024-01-01 08:45:00 +0000"'),
+  ]);
+  assert.deepStrictEqual(r.workout_types, [{ type: "Other", count: 1, minutes: 45 }]);
+});
+
+test("workoutTypeName: maps known + humanizes unknown identifiers", () => {
+  assert.strictEqual(P.workoutTypeName("HKWorkoutActivityTypeFunctionalStrengthTraining"), "Strength");
+  assert.strictEqual(P.workoutTypeName("HKWorkoutActivityTypeHighIntensityIntervalTraining"), "HIIT");
+  assert.strictEqual(P.workoutTypeName("HKWorkoutActivityTypeKickboxing"), "Kickboxing");
+  assert.strictEqual(P.workoutTypeName(""), "Other");
+});
+
+test("workout types are period-scoped via workout_types_month", () => {
+  const r = run([
+    wo('workoutActivityType="HKWorkoutActivityTypeRunning" startDate="2023-05-01 08:00:00 +0000" duration="30" durationUnit="min"'),
+    wo('workoutActivityType="HKWorkoutActivityTypeRunning" startDate="2024-05-01 08:00:00 +0000" duration="30" durationUnit="min"'),
+    wo('workoutActivityType="HKWorkoutActivityTypeCycling" startDate="2024-06-01 08:00:00 +0000" duration="45" durationUnit="min"'),
+  ]);
+  // all-time: 2 running + 1 cycling
+  assert.deepStrictEqual(r.workout_types.map(x => x.type), ["Running", "Cycling"]);
+  assert.strictEqual(r.workout_types[0].count, 2);
+  // rebuild the month->type map and scope to 2024 only
+  const monthMap = new Map(r.workout_types_month.map(mt =>
+    [mt.month, new Map(mt.types.map(ti => [ti.type, { count: ti.count, minutes: ti.minutes }]))]));
+  const y2024 = P.aggWorkoutTypes(monthMap, "2024");
+  assert.deepStrictEqual(y2024, [
+    { type: "Cycling", count: 1, minutes: 45 },
+    { type: "Running", count: 1, minutes: 30 },
+  ]);
+});
+
 test("sleep stages: split + per-night total + consistency present", () => {
   const tags = [];
   // 3 consistent nights, each Core+Deep+REM, bed ~23:00 wake ~07:00
