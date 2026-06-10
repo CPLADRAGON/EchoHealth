@@ -11,6 +11,14 @@ const I18N = {
     "install.ios": "<b>Add to your Home Screen:</b> tap the Share button, then “Add to Home Screen” — it stays fully on your device.",
     "install.button": "Install",
     "drop.title": "Add your Apple Health export here",
+    "hero.title": "Your Apple Health, beautifully visualized",
+    "hero.sub": "Drop your export and get an interactive dashboard, GPS route maps, streaks, and AI insights — computed entirely in your browser. No account, no upload, nothing leaves your device.",
+    "hero.f1t": "Instant dashboard",
+    "hero.f1d": "Steps, heart, sleep, workouts, routes and more — charted the moment your file loads.",
+    "hero.f2t": "Private by design",
+    "hero.f2d": "Your file is read on-device and never uploaded. Close the tab and it’s gone.",
+    "hero.f3t": "AI insights",
+    "hero.f3d": "Ask about your trends and patterns — the assistant only ever sees summary numbers.",
     "drop.hint": "Tap Choose file (or drag in your export.zip / the export.xml inside it). We analyze it instantly, right here on your device.",
     "drop.button": "Choose file",
     "drop.formats": "Accepts export.zip or export.xml",
@@ -201,6 +209,14 @@ const I18N = {
     "install.ios": "<b>添加到主屏幕：</b>点击分享按钮，然后选择“添加到主屏幕” — 所有数据仍保留在你的设备上。",
     "install.button": "安装",
     "drop.title": "在这里添加你的 Apple 健康导出文件",
+    "hero.title": "你的 Apple 健康数据，优雅呈现",
+    "hero.sub": "拖入导出文件，即可获得交互式看板、GPS 路线地图、连续记录与 AI 洞察——全部在你的浏览器中完成。无需账号，不上传，数据绝不离开你的设备。",
+    "hero.f1t": "即时看板",
+    "hero.f1d": "步数、心率、睡眠、锻炼、路线等——文件加载后立即成图。",
+    "hero.f2t": "隐私优先",
+    "hero.f2d": "你的文件在本设备读取，绝不上传。关闭页面后即消失。",
+    "hero.f3t": "AI 洞察",
+    "hero.f3d": "问问你的趋势与规律——助手只会看到汇总数据。",
     "drop.hint": "点击“选择文件”（或拖入 export.zip / 其中的 export.xml）。我们会立即在你的设备上完成分析。",
     "drop.button": "选择文件",
     "drop.formats": "支持 export.zip 或 export.xml",
@@ -683,6 +699,8 @@ const fileInput = document.getElementById("fileInput");
 
 function showStage(stage){
   drop.style.display = stage === "drop" ? "" : "none";
+  const hero = document.getElementById("hero");
+  if (hero) hero.style.display = stage === "drop" ? "" : "none";
   loading.classList.toggle("show", stage === "loading");
   results.classList.toggle("show", stage === "results");
 }
