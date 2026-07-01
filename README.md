@@ -8,6 +8,8 @@ locally — no data ever leaves your machine.
 
 ## EchoHealth Web — run it in your browser
 
+![EchoHealth Demo](https://i.imgur.com/u3by6wE.gif)
+
 `web/index.html` is a **single-page web app** that does everything client-side:
 drop your Apple Health `export.zip` (or `export.xml`) and it parses and charts
 your data **entirely inside the browser tab** with a streaming pure-JavaScript
@@ -18,10 +20,20 @@ Works on desktop and mobile browsers.
 Highlights once your data loads: 14 interactive charts, a GitHub-style
 **activity/sleep calendar heatmap**, streaks & records, **notable-change
 (anomaly) detection**, same-day **and next-day (lagged) correlations**, a GPS
-routes map, PNG/PDF report export, and a year-in-review recap. New here? Hit
+routes map, PNG/PDF report export, and a year-in-review recap with shareable
+cards. New here? Hit
 **Try with sample data** to explore the whole dashboard with a synthetic export
 (no file needed). The AI assistant also writes a short auto-narrative of your
 year and streams its answers token-by-token.
+
+### Recap cards
+
+<p align="center">
+  <img src="docs/screenshots/echohealth-recap-2026-07-01-1.png" alt="All-time recap" width="200" />
+  <img src="docs/screenshots/echohealth-recap-2026-07-01-2.png" alt="Your movement" width="200" />
+  <img src="docs/screenshots/echohealth-recap-2026-07-01-3.png" alt="Heart & sleep" width="200" />
+  <img src="docs/screenshots/echohealth-recap-2026-07-01-4.png" alt="Highlights" width="200" />
+</p>
 
 **Try locally:**
 
