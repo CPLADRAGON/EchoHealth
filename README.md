@@ -12,7 +12,7 @@
 ![Span](https://img.shields.io/badge/2014%E2%80%932026-blue)
 ![No upload](https://img.shields.io/badge/privacy-no%20data%20uploaded-brightgreen)
 
-<img src="docs/demo.gif" alt="EchoHealth demo" width="100%" />
+<img src="docs/demo1.gif" alt="EchoHealth demo" width="100%" />
 
 </div>
 
@@ -20,19 +20,19 @@
 
 ## Features
 
-| | Feature | Description |
-|---|---|---|
-| 📊 | **14 interactive charts** | Steps, distance, energy, heart rate, HRV, VO₂ max, sleep, workouts & more |
-| 🗓️ | **Activity & sleep heatmap** | GitHub-style calendar showing daily activity and sleep patterns |
-| 🔍 | **Anomaly detection** | Automatically flags notable changes in your health metrics |
-| 📈 | **Correlations** | Same-day & next-day (lagged) correlation analysis between metrics |
-| 🗺️ | **GPS routes map** | Interactive Leaflet map of all workout routes, colored by pace |
-| 🏆 | **Streaks & records** | Personal bests, longest streaks, year-in-review recap cards |
-| 🤖 | **AI Health Assistant** | Ask questions about your data (optional Gemini integration) |
-| 🌐 | **Bilingual** | English / 中文 toggle |
-| 🌙 | **Dark mode** | Light & dark themes |
-| 📱 | **PWA** | Install as an app on desktop or mobile |
-| 🔒 | **100 % private** | All processing in-browser — nothing ever leaves your machine |
+|      | Feature                            | Description                                                                |
+| ---- | ---------------------------------- | -------------------------------------------------------------------------- |
+| 📊   | **14 interactive charts**    | Steps, distance, energy, heart rate, HRV, VO₂ max, sleep, workouts & more |
+| 🗓️ | **Activity & sleep heatmap** | GitHub-style calendar showing daily activity and sleep patterns            |
+| 🔍   | **Anomaly detection**        | Automatically flags notable changes in your health metrics                 |
+| 📈   | **Correlations**             | Same-day & next-day (lagged) correlation analysis between metrics          |
+| 🗺️ | **GPS routes map**           | Interactive Leaflet map of all workout routes, colored by pace             |
+| 🏆   | **Streaks & records**        | Personal bests, longest streaks, year-in-review recap cards                |
+| 🤖   | **AI Health Assistant**      | Ask questions about your data (optional Gemini integration)                |
+| 🌐   | **Bilingual**                | English / 中文 toggle                                                      |
+| 🌙   | **Dark mode**                | Light & dark themes                                                        |
+| 📱   | **PWA**                      | Install as an app on desktop or mobile                                     |
+| 🔒   | **100 % private**            | All processing in-browser — nothing ever leaves your machine              |
 
 ---
 
@@ -87,7 +87,6 @@ The static dashboard works fully offline without this; only the chat panel needs
 the function. (Gemini/Vercel may be unreachable in regions that block them, e.g.
 mainland China, but the rest of the app still runs locally.)
 
-
 > Privacy: this repo intentionally excludes all personal health data
 > (`apple_health_export/`, `*.gpx`) via `.gitignore`. Only the code is published.
 
@@ -135,12 +134,12 @@ A separate, higher-powered pipeline renders a richer report locally.
 
 `output/dashboard.html` — a single, self-contained page with:
 
-| Section | Charts |
-|---|---|
-| 🏃 **Activity** | Daily steps + 30-day average · steps calendar heatmap · monthly distance · monthly energy (active vs resting) |
-| ❤️ **Heart & Cardio** | Resting heart rate trend · 12-month HR range (min/avg/max) · HRV (SDNN) · VO₂ max |
-| 😴 **Sleep** | Nightly sleep duration + 14-night average · bedtime consistency |
-| 🗺️ **Workouts & Routes** | Workouts per month · workout types · GPS route distance (coloured by pace) |
+| Section                         | Charts                                                                                                           |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 🏃**Activity**            | Daily steps + 30-day average · steps calendar heatmap · monthly distance · monthly energy (active vs resting) |
+| ❤️**Heart & Cardio**    | Resting heart rate trend · 12-month HR range (min/avg/max) · HRV (SDNN) · VO₂ max                            |
+| 😴**Sleep**               | Nightly sleep duration + 14-night average · bedtime consistency                                                 |
+| 🗺️**Workouts & Routes** | Workouts per month · workout types · GPS route distance (coloured by pace)                                     |
 
 `output/routes_map.html` — a Leaflet map overlaying all GPS workout routes,
 with popups (distance / duration) and start/end markers on your longest route.
