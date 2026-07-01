@@ -1,18 +1,42 @@
+<div align="center">
+
 # EchoHealth · 回声健康
 
-Turn your Apple Health export into an **interactive HTML dashboard** plus an
-**interactive map** of every GPS-tracked workout. All processing happens
-locally — no data ever leaves your machine.
+**Turn your Apple Health export into a beautiful, interactive dashboard — 100 % client-side, zero data uploaded.**
 
-<div align="center">
-  <img src="https://i.imgur.com/u3by6wE.gif" alt="EchoHealth demo" width="100%" /><br/><br/>
-  <img src="https://img.shields.io/badge/records-1.9M%2B-fa3c4c" alt="overview" />
-  <img src="https://img.shields.io/badge/2014%E2%80%932026-blue" alt="span" />
+将你的 Apple 健康导出数据变成交互式仪表盘 — 全部在浏览器本地完成，数据绝不上传。
+
+[![CI](https://github.com/CPLADRAGON/EchoHealth/actions/workflows/ci.yml/badge.svg)](https://github.com/CPLADRAGON/EchoHealth/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+![Records](https://img.shields.io/badge/records-1.9M%2B-fa3c4c)
+![Span](https://img.shields.io/badge/2014%E2%80%932026-blue)
+![No upload](https://img.shields.io/badge/privacy-no%20data%20uploaded-brightgreen)
+
+<img src="docs/demo.gif" alt="EchoHealth demo" width="100%" />
+
 </div>
 
-## EchoHealth Web — run it in your browser
+---
 
-![EchoHealth Demo](https://i.imgur.com/u3by6wE.gif)
+## Features
+
+| | Feature | Description |
+|---|---|---|
+| 📊 | **14 interactive charts** | Steps, distance, energy, heart rate, HRV, VO₂ max, sleep, workouts & more |
+| 🗓️ | **Activity & sleep heatmap** | GitHub-style calendar showing daily activity and sleep patterns |
+| 🔍 | **Anomaly detection** | Automatically flags notable changes in your health metrics |
+| 📈 | **Correlations** | Same-day & next-day (lagged) correlation analysis between metrics |
+| 🗺️ | **GPS routes map** | Interactive Leaflet map of all workout routes, colored by pace |
+| 🏆 | **Streaks & records** | Personal bests, longest streaks, year-in-review recap cards |
+| 🤖 | **AI Health Assistant** | Ask questions about your data (optional Gemini integration) |
+| 🌐 | **Bilingual** | English / 中文 toggle |
+| 🌙 | **Dark mode** | Light & dark themes |
+| 📱 | **PWA** | Install as an app on desktop or mobile |
+| 🔒 | **100 % private** | All processing in-browser — nothing ever leaves your machine |
+
+---
+
+## EchoHealth Web — run it in your browser
 
 `web/index.html` is a **single-page web app** that does everything client-side:
 drop your Apple Health `export.zip` (or `export.xml`) and it parses and charts
@@ -21,14 +45,21 @@ parser. Nothing is uploaded, no account, no server. English / 中文 toggle, lig
 dark themes, PWA install, and a first-visit privacy + tutorial guide are built in.
 Works on desktop and mobile browsers.
 
-Highlights once your data loads: 14 interactive charts, a GitHub-style
-**activity/sleep calendar heatmap**, streaks & records, **notable-change
-(anomaly) detection**, same-day **and next-day (lagged) correlations**, a GPS
-routes map, PNG/PDF report export, and a year-in-review recap with shareable
-cards. New here? Hit
-**Try with sample data** to explore the whole dashboard with a synthetic export
-(no file needed). The AI assistant also writes a short auto-narrative of your
-year and streams its answers token-by-token.
+### Quick start
+
+```bash
+git clone https://github.com/CPLADRAGON/EchoHealth.git
+cd EchoHealth/web
+python -m http.server 8777        # or any static server
+# open http://localhost:8777 and drop your export.zip in
+```
+
+### One-click deploy
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FCPLADRAGON%2FEchoHealth&root-directory=web)
+
+Import this repo on Vercel with **Root Directory = `web`**, framework "Other", no
+build command. It deploys as a static site. GitHub Pages also works.
 
 ### Recap cards
 
@@ -38,18 +69,6 @@ year and streams its answers token-by-token.
   <img src="docs/screenshots/echohealth-recap-2026-07-01-3.png" alt="Heart & sleep" width="200" />
   <img src="docs/screenshots/echohealth-recap-2026-07-01-4.png" alt="Highlights" width="200" />
 </p>
-
-**Try locally:**
-
-```powershell
-cd web
-python -m http.server 8777
-```
-
-Then open `http://localhost:8777/` and drop your export in.
-
-**Deploy (Vercel):** import this repo, set **Root Directory = `web`**, framework
-"Other", no build command. It deploys as a static site. (GitHub Pages also works.)
 
 ### AI Health Assistant (optional)
 
@@ -173,3 +192,21 @@ You can also run individual stages:
 - `data/` and `output/` are regenerated artifacts; `apple_health_export/`,
   `.venv/`, `data/`, and `output/` are git-ignored by default.
 - Everything is local and offline — no network calls, no telemetry.
+
+## Contributing
+
+Contributions are welcome! Feel free to open an issue or submit a pull request.
+
+1. Fork the repo
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Run the tests (`npm test`)
+4. Commit your changes
+5. Push to the branch and open a Pull Request
+
+## Star History
+
+If you find EchoHealth useful, please consider giving it a ⭐ — it helps others discover the project!
+
+## License
+
+[MIT](LICENSE)
