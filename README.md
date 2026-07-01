@@ -7,6 +7,7 @@ locally — no data ever leaves your machine.
 <div align="center">
   <img src="https://i.imgur.com/u3by6wE.gif" alt="EchoHealth demo" width="100%" />
 </div>
+
 ![overview](https://img.shields.io/badge/records-1.9M%2B-fa3c4c) ![span](https://img.shields.io/badge/2014%E2%80%932026-blue)
 
 ## EchoHealth Web — run it in your browser
